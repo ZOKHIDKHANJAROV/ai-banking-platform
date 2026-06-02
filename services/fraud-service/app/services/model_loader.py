@@ -1,6 +1,9 @@
-import joblib
+import mlflow
 
+MODEL_URI = (
+    "models:/FraudDetectionModel/latest"
+)
 
-model = joblib.load(
-    "models_artifacts/model.pkl"
+model = mlflow.pyfunc.load_model(
+    MODEL_URI
 )

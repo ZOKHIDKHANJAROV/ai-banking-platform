@@ -1,13 +1,13 @@
+import mlflow
+import mlflow.xgboost
+
 import numpy as np
 import pandas as pd
 
 from xgboost import XGBClassifier
 
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
-
-import joblib
-
+from sklearn.metrics import accuracy_score
 
 np.random.seed(42)
 
@@ -27,9 +27,7 @@ data["fraud"] = (
         (data["tx_count"] > 15)
     )
     |
-    (
-        data["country_risk"] == 1
-    )
+    (data["country_risk"] == 1)
     |
     (
         data["country_changed"] == 1
@@ -56,29 +54,66 @@ X_train, X_test, y_train, y_test = train_test_split(
     random_state=42
 )
 
-model = XGBClassifier(
-    n_estimators=100,
-    max_depth=5,
-    learning_rate=0.1
+mlflow.set_tracking_uri(
+    "http://localhost:5000"
 )
 
-model.fit(
-    X_train,
-    y_train
+mlflow.set_experiment(
+    "fraud-detection"
 )
 
-preds = model.predict(X_test)
+with mlflow.start_run():
 
-print(
-    classification_report(
+    model = XGBClassifier(
+        n_estimators=100,
+        max_depth=5,
+        learning_rate=0.1
+    )
+
+    model.fit(
+        X_train,
+        y_train
+    )
+
+    preds = model.predict(
+        X_test
+    )
+
+    accuracy = accuracy_score(
         y_test,
         preds
     )
-)
 
-joblib.dump(
+    mlflow.log_param(
+        "n_estimators",
+        100
+    )
+
+    mlflow.log_param(
+        "max_depth",
+        5
+    )
+
+    mlflow.log_metric(
+        "accuracy",
+        accuracy
+    )
+
+    mlflow.xgboost.log_model(
+        model,
+        artifact_path="model"
+    )
+
+    print(
+        f"Accuracy: {accuracy}"
+    )
+    
+model_info = mlflow.xgboost.log_model(
     model,
-    "model.pkl"
+    artifact_path="model"
 )
 
-print("Model saved")
+mlflow.register_model(
+    model_info.model_uri,
+    "FraudDetectionModel"
+)

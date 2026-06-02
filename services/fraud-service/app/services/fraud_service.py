@@ -5,11 +5,12 @@ from app.models.fraud_alert import FraudAlert
 
 async def save_alert(
     session,
-    transaction_id,
-    score,
-    probability,
-    level
+    transaction_id: int,
+    score: float,
+    probability: float,
+    level: str
 ):
+
     alert = FraudAlert(
         transaction_id=transaction_id,
         fraud_score=score,

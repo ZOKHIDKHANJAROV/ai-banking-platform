@@ -21,8 +21,8 @@ def predict_fraud_probability(
         }
     ])
 
-    probability = model.predict_proba(
+    prediction = model.predict(
         features
-    )[0][1]
+    )
 
-    return float(probability)
+    return float(prediction[0])
