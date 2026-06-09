@@ -23,6 +23,7 @@ async def startup():
         await conn.run_sync(Base.metadata.create_all)
 
     await start_producer()
+    print("API Gateway started")
 
 
 @app.on_event("shutdown")

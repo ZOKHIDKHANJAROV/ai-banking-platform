@@ -1,28 +1,17 @@
-import pandas as pd
+import joblib
+import numpy as np
 
-from app.services.model_loader import (
-    model
+model = joblib.load(
+    "fraud_model.pkl"
 )
 
 
 def predict_fraud_probability(
-    amount,
-    tx_count,
-    country_risk,
-    country_changed
+    features: list
 ):
 
-    features = pd.DataFrame([
-        {
-            "amount": amount,
-            "tx_count": tx_count,
-            "country_risk": country_risk,
-            "country_changed": country_changed
-        }
-    ])
-
     probability = model.predict_proba(
-        features
+        np.array([features])
     )[0][1]
 
     return float(probability)

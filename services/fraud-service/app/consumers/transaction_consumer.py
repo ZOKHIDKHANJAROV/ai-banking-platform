@@ -1,27 +1,51 @@
 import json
+import asyncio
 
 from aiokafka import AIOKafkaConsumer
-
-from app.core.config import settings
-
-consumer = AIOKafkaConsumer(
-    "transactions",
-    bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-    group_id="fraud-detector"
-)
 
 
 async def start_consumer():
 
-    await consumer.start()
+    consumer = AIOKafkaConsumer(
+        "transactions",
+        bootstrap_servers="kafka:9092",
+        group_id="fraud-service",
+        auto_offset_reset="earliest"
+    )
+
+    while True:
+
+        try:
+
+            print("Connecting to Kafka...")
+
+            await consumer.start()
+
+            print("Kafka consumer connected")
+
+            break
+
+        except Exception as e:
+
+            print(
+                f"Kafka unavailable: {e}"
+            )
+
+            await asyncio.sleep(5)
 
     try:
 
         async for msg in consumer:
 
-            yield json.loads(
+            transaction = json.loads(
                 msg.value.decode("utf-8")
             )
+
+            print(
+                f"Message received: {transaction}"
+            )
+
+            yield transaction
 
     finally:
 

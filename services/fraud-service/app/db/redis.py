@@ -1,6 +1,7 @@
-import redis.asyncio as redis
+from redis.asyncio import Redis
 
-redis_client = redis.Redis(
+
+redis_client = Redis(
     host="redis",
     port=6379,
     decode_responses=True
