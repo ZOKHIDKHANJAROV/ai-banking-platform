@@ -16,3 +16,6 @@ scikit-learn
 
 pydantic
 pydantic-settings
+joblib
+xgboost
+mlflow==3.1.1

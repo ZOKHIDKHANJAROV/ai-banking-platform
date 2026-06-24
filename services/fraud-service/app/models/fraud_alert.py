@@ -1,16 +1,12 @@
 from sqlalchemy import (
+    Column,
     Integer,
     Float,
     String,
     DateTime
 )
 
-from sqlalchemy.orm import (
-    Mapped,
-    mapped_column
-)
-
-from datetime import datetime
+from sqlalchemy.sql import func
 
 from app.db.database import Base
 
@@ -19,20 +15,29 @@ class FraudAlert(Base):
 
     __tablename__ = "fraud_alerts"
 
-    id: Mapped[int] = mapped_column(
+    id = Column(
         Integer,
         primary_key=True
     )
 
-    transaction_id: Mapped[int]
-
-    score: Mapped[float]
-
-    level: Mapped[str] = mapped_column(
-        String(20)
+    transaction_id = Column(
+        Integer
     )
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=datetime.utcnow
+    fraud_score = Column(
+        Float
+    )
+
+    fraud_probability = Column(
+        Float,
+        nullable=False
+    )
+
+    risk_level = Column(
+        String
+    )
+
+    created_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now()
     )

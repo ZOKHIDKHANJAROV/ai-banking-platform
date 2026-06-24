@@ -1,8 +1,10 @@
 import joblib
 import numpy as np
 
+MODEL_PATH = "models/fraud_model.pkl"
+
 model = joblib.load(
-    "fraud_model.pkl"
+    MODEL_PATH
 )
 
 

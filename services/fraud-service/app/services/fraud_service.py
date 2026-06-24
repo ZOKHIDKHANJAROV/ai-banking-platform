@@ -1,21 +1,22 @@
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.fraud_alert import (
-    FraudAlert
-)
+from app.models.fraud_alert import FraudAlert
 
 
 async def save_alert(
-    session,
+    session: AsyncSession,
     transaction_id: int,
-    score: float,
-    level: str
+    fraud_score: float,
+    fraud_probability: float,
+    risk_level: str
 ):
 
     alert = FraudAlert(
         transaction_id=transaction_id,
-        score=score,
-        level=level
+        fraud_score=fraud_score,
+        fraud_probability=fraud_probability,
+        risk_level=risk_level
     )
 
     session.add(alert)
@@ -28,25 +29,25 @@ async def save_alert(
 
 
 async def get_alerts(
-    session
+    session: AsyncSession
 ):
 
     result = await session.execute(
         select(FraudAlert)
+        .order_by(FraudAlert.id.desc())
     )
 
     return result.scalars().all()
 
-from sqlalchemy import select
 
 async def get_alert_by_id(
-    session,
+    session: AsyncSession,
     alert_id: int
 ):
+
     result = await session.execute(
-        select(FraudAlert).where(
-            FraudAlert.id == alert_id
-        )
+        select(FraudAlert)
+        .where(FraudAlert.id == alert_id)
     )
 
     return result.scalar_one_or_none()

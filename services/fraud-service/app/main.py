@@ -54,6 +54,10 @@ from app.services.ml_fraud_engine import (
     predict_fraud_probability
 )
 
+from app.services.statistics_service import (
+    get_stats
+)
+
 app = FastAPI(
     title="Fraud Service"
 )
@@ -133,8 +137,9 @@ async def fraud_worker():
                 await save_alert(
                     session=session,
                     transaction_id=transaction["transaction_id"],
-                    score=score,
-                    level=level
+                    fraud_score=score,
+                    fraud_probability=probability,
+                    risk_level=level
                 )
                 print(f"Alert saved: tx={transaction['transaction_id']}")
 
@@ -213,3 +218,12 @@ async def read_alert(
             )
 
         return alert
+    
+@app.get("/stats")
+async def stats():
+
+    async with AsyncSessionLocal() as session:
+
+        return await get_stats(
+            session
+        )
