@@ -1,5 +1,6 @@
 import json
 import logging
+import asyncio
 
 from aiokafka import AIOKafkaProducer
 
@@ -36,11 +37,38 @@ async def start_producer():
 
     global producer
 
-    producer = AIOKafkaProducer(
-        bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS
-    )
+    last_error = None
 
-    await producer.start()
+    for attempt in range(
+        1,
+        settings.KAFKA_STARTUP_MAX_RETRIES + 1
+    ):
+        producer = AIOKafkaProducer(
+            bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS
+        )
+
+        try:
+            await producer.start()
+            logger.info(
+                "Kafka producer started on attempt %s",
+                attempt
+            )
+            return
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "Kafka producer startup attempt %s/%s failed: %s",
+                attempt,
+                settings.KAFKA_STARTUP_MAX_RETRIES,
+                exc
+            )
+            await producer.stop()
+            producer = None
+            await asyncio.sleep(
+                settings.KAFKA_STARTUP_RETRY_DELAY_SECONDS
+            )
+
+    raise last_error
 
 
 

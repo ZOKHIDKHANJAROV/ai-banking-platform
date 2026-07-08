@@ -9,7 +9,8 @@ def create_consumer():
     return AIOKafkaConsumer(
         "transactions",
         bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-        group_id="fraud-detector"
+        group_id="fraud-detector",
+        auto_offset_reset=settings.KAFKA_CONSUMER_AUTO_OFFSET_RESET
     )
 
 

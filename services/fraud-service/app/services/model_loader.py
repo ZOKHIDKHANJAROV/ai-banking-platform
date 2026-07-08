@@ -2,8 +2,6 @@ import logging
 from pathlib import Path
 
 import joblib
-import mlflow
-import mlflow.xgboost
 
 from app.core.config import settings
 
@@ -16,6 +14,8 @@ class ModelLoader:
         self._source = "uninitialized"
 
     def _load_from_mlflow(self):
+        import mlflow
+
         mlflow.set_tracking_uri(
             settings.MLFLOW_TRACKING_URI
         )
@@ -30,7 +30,7 @@ class ModelLoader:
             model_uri
         )
 
-        self._model = mlflow.xgboost.load_model(
+        self._model = mlflow.pyfunc.load_model(
             model_uri
         )
         self._source = model_uri

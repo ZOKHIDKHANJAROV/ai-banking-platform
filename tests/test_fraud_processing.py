@@ -1,4 +1,5 @@
 import importlib
+import asyncio
 
 from tests.helpers import import_service_module
 
@@ -109,3 +110,98 @@ def test_process_transaction_creates_high_risk_alert(
         "probability": 0.91,
         "level": "HIGH"
     }]
+
+
+def test_fraud_worker_retries_after_consumer_failure(
+    monkeypatch
+):
+    fraud_module = import_service_module(
+        "services/fraud-service"
+    )
+
+    attempts = {"count": 0}
+    processed = []
+
+    async def fake_start_consumer():
+        attempts["count"] += 1
+
+        if attempts["count"] == 1:
+            raise RuntimeError("kafka not ready")
+
+        yield {
+            "transaction_id": 5,
+            "user_id": 1,
+            "amount": 100.0,
+            "country": "US"
+        }
+
+    async def fake_process_transaction(transaction):
+        processed.append(transaction)
+        raise asyncio.CancelledError
+
+    async def fake_sleep(seconds):
+        return None
+
+    monkeypatch.setattr(
+        fraud_module,
+        "start_consumer",
+        fake_start_consumer
+    )
+    monkeypatch.setattr(
+        fraud_module,
+        "process_transaction",
+        fake_process_transaction
+    )
+    monkeypatch.setattr(
+        fraud_module.asyncio,
+        "sleep",
+        fake_sleep
+    )
+
+    try:
+        asyncio.run(
+            fraud_module.fraud_worker()
+        )
+    except asyncio.CancelledError:
+        pass
+
+    assert attempts["count"] >= 2
+    assert processed == [{
+        "transaction_id": 5,
+        "user_id": 1,
+        "amount": 100.0,
+        "country": "US"
+    }]
+
+
+def test_create_consumer_uses_earliest_offset_reset(
+    monkeypatch
+):
+    consumer_module = import_service_module(
+        "services/fraud-service"
+    )
+    transaction_consumer = importlib.import_module(
+        "app.consumers.transaction_consumer"
+    )
+
+    captured = {}
+
+    class FakeConsumer:
+        def __init__(self, *topics, **kwargs):
+            captured["topics"] = topics
+            captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(
+        transaction_consumer,
+        "AIOKafkaConsumer",
+        FakeConsumer
+    )
+
+    transaction_consumer.create_consumer()
+
+    assert captured["topics"] == ("transactions",)
+    assert (
+        captured["kwargs"]["auto_offset_reset"]
+        == consumer_module.settings.KAFKA_CONSUMER_AUTO_OFFSET_RESET
+    )
+    assert captured["kwargs"]["auto_offset_reset"] == "earliest"

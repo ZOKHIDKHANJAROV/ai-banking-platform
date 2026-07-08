@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app.consumers.transaction_consumer import (
     start_consumer
 )
+from app.core.config import settings
 from app.db.database import (
     AsyncSessionLocal,
     Base,
@@ -79,10 +80,23 @@ def get_risk_level(
 
 
 async def fraud_worker():
-    async for transaction in start_consumer():
-        await process_transaction(
-            transaction
-        )
+    while True:
+        try:
+            async for transaction in start_consumer():
+                await process_transaction(
+                    transaction
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning(
+                "Fraud worker loop failed, retrying in %s seconds: %s",
+                settings.KAFKA_CONSUMER_RETRY_DELAY_SECONDS,
+                exc
+            )
+            await asyncio.sleep(
+                settings.KAFKA_CONSUMER_RETRY_DELAY_SECONDS
+            )
 
 
 async def process_transaction(

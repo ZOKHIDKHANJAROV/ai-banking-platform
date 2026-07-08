@@ -1,11 +1,7 @@
-import mlflow
-import mlflow.xgboost
-
 import numpy as np
 import pandas as pd
 
-from xgboost import XGBClassifier
-
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
@@ -54,66 +50,70 @@ X_train, X_test, y_train, y_test = train_test_split(
     random_state=42
 )
 
-mlflow.set_tracking_uri(
-    "http://localhost:5000"
+model = RandomForestClassifier(
+    n_estimators=120,
+    max_depth=8,
+    random_state=42
 )
 
-mlflow.set_experiment(
-    "fraud-detection"
+model.fit(
+    X_train,
+    y_train
 )
 
-with mlflow.start_run():
+preds = model.predict(
+    X_test
+)
 
-    model = XGBClassifier(
-        n_estimators=100,
-        max_depth=5,
-        learning_rate=0.1
+accuracy = accuracy_score(
+    y_test,
+    preds
+)
+
+print(
+    f"Accuracy: {accuracy}"
+)
+
+try:
+    import mlflow
+    import mlflow.sklearn
+
+    mlflow.set_tracking_uri(
+        "http://localhost:5000"
     )
 
-    model.fit(
-        X_train,
-        y_train
+    mlflow.set_experiment(
+        "fraud-detection"
     )
 
-    preds = model.predict(
-        X_test
-    )
+    with mlflow.start_run():
+        mlflow.log_param(
+            "model_type",
+            "RandomForestClassifier"
+        )
+        mlflow.log_param(
+            "n_estimators",
+            120
+        )
+        mlflow.log_param(
+            "max_depth",
+            8
+        )
+        mlflow.log_metric(
+            "accuracy",
+            accuracy
+        )
 
-    accuracy = accuracy_score(
-        y_test,
-        preds
-    )
+        model_info = mlflow.sklearn.log_model(
+            model,
+            artifact_path="model"
+        )
 
-    mlflow.log_param(
-        "n_estimators",
-        100
+    mlflow.register_model(
+        model_info.model_uri,
+        "FraudDetectionModel"
     )
-
-    mlflow.log_param(
-        "max_depth",
-        5
-    )
-
-    mlflow.log_metric(
-        "accuracy",
-        accuracy
-    )
-
-    mlflow.xgboost.log_model(
-        model,
-        artifact_path="model"
-    )
-
+except Exception as exc:
     print(
-        f"Accuracy: {accuracy}"
+        f"Skipping MLflow registration: {exc}"
     )
-    
-model_info = mlflow.xgboost.log_model(
-    model,
-    artifact_path="model"
-)
-
-mlflow.register_model(
-    model_info.model_uri,
-    "FraudDetectionModel"
-)

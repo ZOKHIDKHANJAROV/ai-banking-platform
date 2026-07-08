@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     REDIS_PORT: int
     OUTBOX_POLL_INTERVAL_SECONDS: float = 1.0
     OUTBOX_BATCH_SIZE: int = 50
+    KAFKA_STARTUP_MAX_RETRIES: int = 30
+    KAFKA_STARTUP_RETRY_DELAY_SECONDS: float = 2.0
 
 
 settings = Settings()
