@@ -9,7 +9,7 @@ aiokafka
 
 redis
 
-joblib
+mlflow==3.1.1
 numpy
 pandas
 

@@ -23,7 +23,7 @@ Microservice-based fraud detection platform for banking transactions.
 - Prometheus metrics endpoints on every core service plus a preprovisioned Grafana dashboard.
 - API gateway hardening with API key auth, Redis-backed rate limiting, CORS, and request/correlation IDs.
 - JWT token issuance via auth-service and bearer-token access to the API gateway.
-- MLflow-first model loading with a local artifact fallback.
+- MLflow Registry-based model loading with automatic latest-version resolution.
 - Alert retrieval, statistics, health checks, and direct `/predict` scoring.
 
 ## Project Structure
@@ -126,7 +126,7 @@ Run the training script after MLflow is available:
 py -3 ml/fraud-models/train.py
 ```
 
-The fraud service first tries to load the latest registered `FraudDetectionModel` from MLflow. If that is unavailable, it falls back to `services/fraud-service/models_artifacts/model.pkl`.
+The fraud service loads the registered `FraudDetectionModel` directly from MLflow Registry. With `MLFLOW_MODEL_STAGE=latest`, it resolves the highest registered model version automatically; with an explicit stage such as `Production`, it loads that stage directly.
 
 ## Testing
 

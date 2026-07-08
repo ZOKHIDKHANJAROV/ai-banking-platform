@@ -1,9 +1,8 @@
 import logging
 from pathlib import Path
 
-import joblib
-
 from app.core.config import settings
+
 
 logger = logging.getLogger(__name__)
 
@@ -13,20 +12,123 @@ class ModelLoader:
         self._model = None
         self._source = "uninitialized"
 
-    def _load_from_mlflow(self):
+    def _get_mlflow(self):
         import mlflow
 
+        return mlflow
+
+    def _get_registered_versions(self):
+        mlflow = self._get_mlflow()
+        client = mlflow.MlflowClient(
+            tracking_uri=settings.MLFLOW_TRACKING_URI
+        )
+
+        return client.search_model_versions(
+            f"name = '{settings.MLFLOW_MODEL_NAME}'"
+        )
+
+    def _resolve_model_version(self):
+        versions = self._get_registered_versions()
+
+        if not versions:
+            raise RuntimeError(
+                "No registered MLflow model versions found for "
+                f"{settings.MLFLOW_MODEL_NAME}"
+            )
+
+        stage = settings.MLFLOW_MODEL_STAGE.strip()
+
+        if stage and stage.lower() != "latest":
+            matching_versions = [
+                item
+                for item in versions
+                if getattr(
+                    item,
+                    "current_stage",
+                    ""
+                ).lower() == stage.lower()
+            ]
+
+            if not matching_versions:
+                raise RuntimeError(
+                    "No registered MLflow model versions found for "
+                    f"{settings.MLFLOW_MODEL_NAME} in stage {stage}"
+                )
+
+            return max(
+                matching_versions,
+                key=lambda item: int(item.version)
+            )
+
+        return max(
+            versions,
+            key=lambda item: int(item.version)
+        )
+
+    def _resolve_model_uri(self):
+        mlflow = self._get_mlflow()
+        version = self._resolve_model_version()
+        client = mlflow.MlflowClient(
+            tracking_uri=settings.MLFLOW_TRACKING_URI
+        )
+        run = client.get_run(
+            version.run_id
+        )
+        artifact_uri = run.info.artifact_uri
+        source_uri = getattr(
+            version,
+            "source",
+            ""
+        )
+
+        if source_uri.startswith("models:/m-"):
+            model_id = source_uri.removeprefix(
+                "models:/"
+            )
+            return (
+                version,
+                str(
+                    Path("/mlflow/artifacts")
+                    / run.info.experiment_id
+                    / "models"
+                    / model_id
+                    / "artifacts"
+                )
+            )
+
+        if artifact_uri.startswith("mlflow-artifacts:/"):
+            artifact_root = Path("/mlflow/artifacts") / artifact_uri.removeprefix(
+                "mlflow-artifacts:/"
+            ).lstrip("/")
+            return (
+                version,
+                str(artifact_root / "model")
+            )
+
+        if artifact_uri.startswith("/mlflow/"):
+            return (
+                version,
+                str(Path(artifact_uri) / "model")
+            )
+
+        return (
+            version,
+            f"runs:/{version.run_id}/model"
+        )
+
+    def load(self):
+        if self._model is not None:
+            return self._model
+
+        mlflow = self._get_mlflow()
         mlflow.set_tracking_uri(
             settings.MLFLOW_TRACKING_URI
         )
-
-        model_uri = (
-            f"models:/{settings.MLFLOW_MODEL_NAME}/"
-            f"{settings.MLFLOW_MODEL_STAGE}"
-        )
+        version, model_uri = self._resolve_model_uri()
 
         logger.info(
-            "Loading fraud model from MLflow: %s",
+            "Loading fraud model from MLflow registry version=%s uri=%s",
+            version.version,
             model_uri
         )
 
@@ -34,30 +136,6 @@ class ModelLoader:
             model_uri
         )
         self._source = model_uri
-
-    def _load_from_local_artifact(self):
-        model_path = Path(__file__).resolve().parents[2] / settings.LOCAL_MODEL_PATH
-
-        logger.info(
-            "Loading fraud model from local artifact: %s",
-            model_path
-        )
-
-        self._model = joblib.load(model_path)
-        self._source = str(model_path)
-
-    def load(self):
-        if self._model is not None:
-            return self._model
-
-        try:
-            self._load_from_mlflow()
-        except Exception as exc:
-            logger.warning(
-                "Falling back to local model artifact because MLflow model load failed: %s",
-                exc
-            )
-            self._load_from_local_artifact()
 
         return self._model
 
@@ -73,7 +151,6 @@ class ModelLoader:
         prediction = model.predict(
             features
         )
-
         value = prediction[0]
 
         if hasattr(value, "item"):

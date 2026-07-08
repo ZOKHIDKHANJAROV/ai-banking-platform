@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import pandas as pd
 
@@ -5,7 +7,22 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 
+
+for stream_name in ["stdout", "stderr"]:
+    stream = getattr(
+        sys,
+        stream_name,
+        None
+    )
+
+    if stream is not None and hasattr(stream, "reconfigure"):
+        stream.reconfigure(
+            encoding="utf-8"
+        )
+
 np.random.seed(42)
+
+EXPERIMENT_NAME = "fraud-detection-registry"
 
 rows = 50000
 
@@ -83,7 +100,7 @@ try:
     )
 
     mlflow.set_experiment(
-        "fraud-detection"
+        EXPERIMENT_NAME
     )
 
     with mlflow.start_run():
@@ -104,15 +121,12 @@ try:
             accuracy
         )
 
-        model_info = mlflow.sklearn.log_model(
-            model,
-            artifact_path="model"
+        mlflow.sklearn.log_model(
+            sk_model=model,
+            name="model",
+            registered_model_name="FraudDetectionModel",
+            serialization_format="cloudpickle"
         )
-
-    mlflow.register_model(
-        model_info.model_uri,
-        "FraudDetectionModel"
-    )
 except Exception as exc:
     print(
         f"Skipping MLflow registration: {exc}"
