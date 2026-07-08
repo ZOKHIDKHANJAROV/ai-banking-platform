@@ -1,7 +1,4 @@
-version: "3.9"
-
 services:
-
   postgres:
     image: postgres:16
     container_name: banking_postgres
@@ -14,6 +11,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d banking"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7
@@ -21,6 +23,11 @@ services:
     restart: always
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
@@ -53,12 +60,39 @@ services:
       context: ./services/api-gateway
     container_name: api_gateway
     restart: always
+    env_file:
+      - ./services/api-gateway/.env
     depends_on:
       - postgres
       - kafka
       - redis
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
+  fraud-service:
+    build:
+      context: ./services/fraud-service
+    container_name: fraud_service
+    restart: always
+    env_file:
+      - ./services/fraud-service/.env
+    depends_on:
+      - postgres
+      - kafka
+      - redis
+      - mlflow
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
 
   mlflow:
     image: ghcr.io/mlflow/mlflow:v3.1.1

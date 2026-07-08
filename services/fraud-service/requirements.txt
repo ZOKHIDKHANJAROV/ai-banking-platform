@@ -9,6 +9,8 @@ aiokafka
 
 redis
 
+mlflow
+xgboost
 numpy
 pandas
 
