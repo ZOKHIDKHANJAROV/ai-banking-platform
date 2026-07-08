@@ -80,72 +80,89 @@ def get_risk_level(
 
 async def fraud_worker():
     async for transaction in start_consumer():
-        user_id = transaction["user_id"]
-        amount = transaction["amount"]
-        country = transaction["country"]
-
-        await save_last_transaction(
-            user_id=user_id,
-            amount=amount
+        await process_transaction(
+            transaction
         )
 
-        tx_count = await increment_transaction_count(
-            user_id=user_id
+
+async def process_transaction(
+    transaction: dict
+):
+    user_id = transaction["user_id"]
+    amount = transaction["amount"]
+    country = transaction["country"]
+
+    await save_last_transaction(
+        user_id=user_id,
+        amount=amount
+    )
+
+    tx_count = await increment_transaction_count(
+        user_id=user_id
+    )
+
+    previous_country = await get_country(
+        user_id=user_id
+    )
+
+    await save_country(
+        user_id=user_id,
+        country=country
+    )
+
+    score = calculate_fraud_score(
+        amount=amount,
+        country=country,
+        tx_count=tx_count,
+        previous_country=previous_country
+    )
+
+    country_risk, country_changed = get_country_features(
+        country=country,
+        previous_country=previous_country
+    )
+
+    probability = predict_fraud_probability(
+        amount=amount,
+        tx_count=tx_count,
+        country_risk=country_risk,
+        country_changed=country_changed
+    )
+
+    level = get_risk_level(
+        probability
+    )
+
+    logger.info(
+        "Processed transaction_id=%s user_id=%s amount=%s country=%s previous_country=%s tx_count=%s score=%.4f probability=%.4f risk_level=%s",
+        transaction["transaction_id"],
+        user_id,
+        amount,
+        country,
+        previous_country,
+        tx_count,
+        score,
+        probability,
+        level
+    )
+
+    async with AsyncSessionLocal() as session:
+        await save_alert(
+            session=session,
+            transaction_id=transaction["transaction_id"],
+            score=score,
+            probability=probability,
+            level=level
         )
 
-        previous_country = await get_country(
-            user_id=user_id
-        )
-
-        await save_country(
-            user_id=user_id,
-            country=country
-        )
-
-        score = calculate_fraud_score(
-            amount=amount,
-            country=country,
-            tx_count=tx_count,
-            previous_country=previous_country
-        )
-
-        country_risk, country_changed = get_country_features(
-            country=country,
-            previous_country=previous_country
-        )
-
-        probability = predict_fraud_probability(
-            amount=amount,
-            tx_count=tx_count,
-            country_risk=country_risk,
-            country_changed=country_changed
-        )
-
-        level = get_risk_level(
-            probability
-        )
-
-        logger.info(
-            "Processed transaction_id=%s user_id=%s amount=%s country=%s previous_country=%s tx_count=%s score=%.4f probability=%.4f risk_level=%s",
-            transaction["transaction_id"],
-            user_id,
-            amount,
-            country,
-            previous_country,
-            tx_count,
-            score,
-            probability,
-            level
-        )
-
-        async with AsyncSessionLocal() as session:
-            await save_alert(
-                session=session,
-                transaction_id=transaction["transaction_id"],
-                score=score,
-                probability=probability,
-                level=level
-            )
+    return {
+        "transaction_id": transaction["transaction_id"],
+        "fraud_score": score,
+        "fraud_probability": probability,
+        "risk_level": level,
+        "tx_count": tx_count,
+        "previous_country": previous_country
+    }
 
 
 @asynccontextmanager
