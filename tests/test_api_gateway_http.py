@@ -17,9 +17,20 @@ def build_gateway_module(
             "DATABASE_URL": f"sqlite+aiosqlite:///{database_path.as_posix()}",
             "KAFKA_BOOTSTRAP_SERVERS": "localhost:9092",
             "REDIS_HOST": "localhost",
-            "REDIS_PORT": "6379"
+            "REDIS_PORT": "6379",
+            "API_KEY": "test-api-key",
+            "ALLOWED_ORIGINS": "http://localhost:3000",
+            "RATE_LIMIT_BACKEND": "memory",
+            "RATE_LIMIT_REQUESTS": "10",
+            "RATE_LIMIT_WINDOW_SECONDS": "60"
         }
     )
+
+
+def auth_headers():
+    return {
+        "X-API-Key": "test-api-key"
+    }
 
 
 def test_api_gateway_health_endpoint(
@@ -84,6 +95,163 @@ def test_api_gateway_metrics_endpoint(
     assert "api_gateway_transactions_created_total" in response.text
 
 
+def test_request_context_headers_are_returned(
+    tmp_path,
+    monkeypatch
+):
+    gateway_module = build_gateway_module(
+        tmp_path
+    )
+
+    async def noop():
+        return None
+
+    monkeypatch.setattr(
+        gateway_module,
+        "start_producer",
+        noop
+    )
+    monkeypatch.setattr(
+        gateway_module,
+        "stop_producer",
+        noop
+    )
+
+    with TestClient(gateway_module.app) as client:
+        response = client.get(
+            "/health",
+            headers={
+                "X-Request-ID": "req-123",
+                "X-Correlation-ID": "corr-456"
+            }
+        )
+
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"] == "req-123"
+    assert response.headers["X-Correlation-ID"] == "corr-456"
+
+
+def test_gateway_rejects_missing_api_key(
+    tmp_path,
+    monkeypatch
+):
+    gateway_module = build_gateway_module(
+        tmp_path
+    )
+
+    async def noop():
+        return None
+
+    monkeypatch.setattr(
+        gateway_module,
+        "start_producer",
+        noop
+    )
+    monkeypatch.setattr(
+        gateway_module,
+        "stop_producer",
+        noop
+    )
+
+    with TestClient(gateway_module.app) as client:
+        response = client.get("/transactions")
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or missing API key"
+
+
+def test_gateway_rate_limits_authenticated_requests(
+    tmp_path,
+    monkeypatch
+):
+    database_path = tmp_path / "api-gateway-rate-limit.db"
+    gateway_module = import_service_module(
+        "services/api-gateway",
+        env_overrides={
+            "DATABASE_URL": f"sqlite+aiosqlite:///{database_path.as_posix()}",
+            "KAFKA_BOOTSTRAP_SERVERS": "localhost:9092",
+            "REDIS_HOST": "localhost",
+            "REDIS_PORT": "6379",
+            "API_KEY": "test-api-key",
+            "ALLOWED_ORIGINS": "http://localhost:3000",
+            "RATE_LIMIT_BACKEND": "memory",
+            "RATE_LIMIT_REQUESTS": "2",
+            "RATE_LIMIT_WINDOW_SECONDS": "60"
+        }
+    )
+
+    async def noop():
+        return None
+
+    monkeypatch.setattr(
+        gateway_module,
+        "start_producer",
+        noop
+    )
+    monkeypatch.setattr(
+        gateway_module,
+        "stop_producer",
+        noop
+    )
+
+    with TestClient(gateway_module.app) as client:
+        first = client.get(
+            "/transactions",
+            headers=auth_headers()
+        )
+        second = client.get(
+            "/transactions",
+            headers=auth_headers()
+        )
+        third = client.get(
+            "/transactions",
+            headers=auth_headers()
+        )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert third.status_code == 429
+    assert third.json()["detail"] == "Rate limit exceeded"
+
+
+def test_gateway_allows_cors_preflight(
+    tmp_path,
+    monkeypatch
+):
+    gateway_module = build_gateway_module(
+        tmp_path
+    )
+
+    async def noop():
+        return None
+
+    monkeypatch.setattr(
+        gateway_module,
+        "start_producer",
+        noop
+    )
+    monkeypatch.setattr(
+        gateway_module,
+        "stop_producer",
+        noop
+    )
+
+    with TestClient(gateway_module.app) as client:
+        response = client.options(
+            "/transactions",
+            headers={
+                "Origin": "http://localhost:3000",
+                "Access-Control-Request-Method": "POST"
+            }
+        )
+
+    assert response.status_code in [200, 204]
+    assert (
+        response.headers["access-control-allow-origin"]
+        == "http://localhost:3000"
+    )
+
+
 def test_create_transaction_marks_record_as_queued(
     tmp_path,
     monkeypatch
@@ -125,6 +293,7 @@ def test_create_transaction_marks_record_as_queued(
     with TestClient(gateway_module.app) as client:
         response = client.post(
             "/transactions",
+            headers=auth_headers(),
             json={
                 "user_id": 42,
                 "amount": 150.25,
@@ -144,7 +313,10 @@ def test_create_transaction_marks_record_as_queued(
     assert published_events[0]["payload"]["transaction_id"] == body["id"]
 
     with TestClient(gateway_module.app) as client:
-        outbox_response = client.get("/outbox")
+        outbox_response = client.get(
+            "/outbox",
+            headers=auth_headers()
+        )
 
     assert outbox_response.status_code == 200
     assert outbox_response.json()[0]["status"] == "SENT"
@@ -186,6 +358,7 @@ def test_create_transaction_persists_for_retry_when_event_publish_fails(
     with TestClient(gateway_module.app) as client:
         response = client.post(
             "/transactions",
+            headers=auth_headers(),
             json={
                 "user_id": 42,
                 "amount": 150.25,
@@ -195,8 +368,14 @@ def test_create_transaction_persists_for_retry_when_event_publish_fails(
             }
         )
 
-        stored = client.get("/transactions")
-        outbox_response = client.get("/outbox")
+        stored = client.get(
+            "/transactions",
+            headers=auth_headers()
+        )
+        outbox_response = client.get(
+            "/outbox",
+            headers=auth_headers()
+        )
 
     assert response.status_code == 200
     assert response.json()["status"] == "PENDING"
@@ -243,6 +422,7 @@ def test_get_transaction_by_id_returns_record(
     with TestClient(gateway_module.app) as client:
         created = client.post(
             "/transactions",
+            headers=auth_headers(),
             json={
                 "user_id": 99,
                 "amount": 700.0,
@@ -252,7 +432,8 @@ def test_get_transaction_by_id_returns_record(
             }
         )
         fetched = client.get(
-            f"/transactions/{created.json()['id']}"
+            f"/transactions/{created.json()['id']}",
+            headers=auth_headers()
         )
 
     assert created.status_code == 200

@@ -12,10 +12,24 @@ class Settings(BaseSettings):
 
     REDIS_HOST: str
     REDIS_PORT: int
+    API_KEY: str = "dev-gateway-key"
+    API_KEY_HEADER_NAME: str = "X-API-Key"
+    ALLOWED_ORIGINS: str = "http://localhost:3000"
+    RATE_LIMIT_BACKEND: str = "redis"
+    RATE_LIMIT_REQUESTS: int = 60
+    RATE_LIMIT_WINDOW_SECONDS: int = 60
     OUTBOX_POLL_INTERVAL_SECONDS: float = 1.0
     OUTBOX_BATCH_SIZE: int = 50
     KAFKA_STARTUP_MAX_RETRIES: int = 30
     KAFKA_STARTUP_RETRY_DELAY_SECONDS: float = 2.0
+
+    @property
+    def allowed_origins_list(self) -> list[str]:
+        return [
+            item.strip()
+            for item in self.ALLOWED_ORIGINS.split(",")
+            if item.strip()
+        ]
 
 
 settings = Settings()

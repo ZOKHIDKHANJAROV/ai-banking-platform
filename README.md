@@ -20,6 +20,7 @@ Microservice-based fraud detection platform for banking transactions.
 - Transaction lifecycle updates after fraud scoring (`APPROVED`, `REVIEW`, `BLOCKED`).
 - Notification dispatch records generated from Kafka `fraud-alerts` events.
 - Prometheus metrics endpoints on every core service plus a preprovisioned Grafana dashboard.
+- API gateway hardening with API key auth, Redis-backed rate limiting, CORS, and request/correlation IDs.
 - MLflow-first model loading with a local artifact fallback.
 - Alert retrieval, statistics, health checks, and direct `/predict` scoring.
 
@@ -43,10 +44,16 @@ ai-banking-platform/
 
 - `GET /`
 - `GET /health`
+- `GET /metrics`
 - `POST /transactions`
 - `GET /transactions`
 - `GET /transactions/{id}`
 - `GET /outbox`
+
+Protected gateway endpoints require the `X-API-Key` header. Public endpoints remain:
+- `GET /`
+- `GET /health`
+- `GET /metrics`
 
 ### Fraud Service
 

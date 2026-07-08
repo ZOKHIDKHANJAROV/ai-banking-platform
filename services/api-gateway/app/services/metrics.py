@@ -33,6 +33,18 @@ transactions_created_total = Counter(
     registry=registry
 )
 
+api_gateway_unauthorized_requests_total = Counter(
+    "api_gateway_unauthorized_requests_total",
+    "Unauthorized requests rejected by the API gateway.",
+    registry=registry
+)
+
+api_gateway_rate_limited_requests_total = Counter(
+    "api_gateway_rate_limited_requests_total",
+    "Requests rejected by the API gateway rate limiter.",
+    registry=registry
+)
+
 outbox_events_dispatched_total = Counter(
     "api_gateway_outbox_events_dispatched_total",
     "Outbox event dispatch attempts from the API gateway.",

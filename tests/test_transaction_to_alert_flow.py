@@ -19,10 +19,21 @@ def build_gateway_module(
             "KAFKA_BOOTSTRAP_SERVERS": "localhost:9092",
             "REDIS_HOST": "localhost",
             "REDIS_PORT": "6379",
+            "API_KEY": "test-api-key",
+            "ALLOWED_ORIGINS": "http://localhost:3000",
+            "RATE_LIMIT_BACKEND": "memory",
+            "RATE_LIMIT_REQUESTS": "10",
+            "RATE_LIMIT_WINDOW_SECONDS": "60",
             "OUTBOX_POLL_INTERVAL_SECONDS": "3600",
             "OUTBOX_BATCH_SIZE": "10"
         }
     )
+
+
+def auth_headers():
+    return {
+        "X-API-Key": "test-api-key"
+    }
 
 
 def test_transaction_flows_from_gateway_event_to_fraud_alert(
@@ -66,6 +77,7 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
     with TestClient(gateway_module.app) as client:
         response = client.post(
             "/transactions",
+            headers=auth_headers(),
             json={
                 "user_id": 501,
                 "amount": 12500.0,
@@ -166,7 +178,8 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
 
     with TestClient(gateway_module.app) as client:
         stored_transaction = client.get(
-            f"/transactions/{response.json()['id']}"
+            f"/transactions/{response.json()['id']}",
+            headers=auth_headers()
         )
 
     assert result["transaction_id"] == response.json()["id"]

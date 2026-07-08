@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi import HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from app.core.config import settings
@@ -18,11 +19,14 @@ from app.schemas.transaction import TransactionCreate
 from app.schemas.transaction import TransactionResponse
 from app.services.kafka_producer import start_producer
 from app.services.kafka_producer import stop_producer
+from app.services.rate_limiter import create_rate_limiter
 from app.services.metrics import metrics_middleware
 from app.services.metrics import metrics_response
 from app.services.metrics import transactions_created_total
 from app.services.outbox import dispatch_pending_events
 from app.services.outbox import enqueue_transaction_event
+from app.services.security import request_context_middleware
+from app.services.security import security_middleware
 
 
 logging.basicConfig(level=logging.INFO)
@@ -62,6 +66,12 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
+    app.state.api_key = settings.API_KEY
+    app.state.api_key_header_name = settings.API_KEY_HEADER_NAME
+    app.state.rate_limiter = await create_rate_limiter(
+        settings
+    )
+
     await start_producer()
     publisher_task = asyncio.create_task(
         outbox_publisher_loop()
@@ -78,11 +88,27 @@ async def lifespan(app: FastAPI):
         with contextlib.suppress(Exception):
             await stop_producer()
 
+        with contextlib.suppress(Exception):
+            await app.state.rate_limiter.close()
+
 
 app = FastAPI(
     title="AI Banking Platform",
     lifespan=lifespan
 )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins_list,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=[
+        "X-Request-ID",
+        "X-Correlation-ID"
+    ]
+)
+app.middleware("http")(request_context_middleware)
+app.middleware("http")(security_middleware)
 app.middleware("http")(metrics_middleware)
 
 
