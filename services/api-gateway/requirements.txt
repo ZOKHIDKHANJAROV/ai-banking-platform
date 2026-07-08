@@ -9,3 +9,4 @@ alembic
 aiokafka
 redis
 python-dotenv
+httpx

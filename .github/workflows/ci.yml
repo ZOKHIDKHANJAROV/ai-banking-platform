@@ -2,9 +2,6 @@ name: CI
 
 on:
   push:
-    branches:
-      - main
-      - codex/**
   pull_request:
 
 jobs:
@@ -28,7 +25,7 @@ jobs:
           python -m pip install pytest pytest-asyncio aiosqlite
 
       - name: Compile sources
-        run: python -m compileall services tests
+        run: python -m compileall services tests migrations
 
       - name: Run tests
-        run: pytest
+        run: python -m pytest tests -q

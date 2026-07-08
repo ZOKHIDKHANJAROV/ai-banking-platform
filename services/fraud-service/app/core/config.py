@@ -1,7 +1,12 @@
 from pydantic_settings import BaseSettings
+from pydantic_settings import SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env"
+    )
+
     DATABASE_URL: str
 
     KAFKA_BOOTSTRAP_SERVERS: str
@@ -12,9 +17,6 @@ class Settings(BaseSettings):
     MLFLOW_MODEL_NAME: str = "FraudDetectionModel"
     MLFLOW_MODEL_STAGE: str = "latest"
     LOCAL_MODEL_PATH: str = "models_artifacts/model.pkl"
-
-    class Config:
-        env_file = ".env"
 
 
 settings = Settings()

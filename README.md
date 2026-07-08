@@ -35,6 +35,7 @@ ai-banking-platform/
 ### API Gateway
 
 - `GET /`
+- `GET /health`
 - `POST /transactions`
 - `GET /transactions`
 
@@ -50,13 +51,20 @@ ai-banking-platform/
 ## Running Locally
 
 1. Start Docker Desktop or another Docker engine.
-2. Build and start the stack:
+2. Apply database migrations:
+
+```bash
+set DATABASE_URL=postgresql+asyncpg://admin:admin@localhost:5432/banking
+py -3 -m alembic upgrade head
+```
+
+3. Build and start the stack:
 
 ```bash
 docker compose up --build
 ```
 
-3. Open the services:
+4. Open the services:
 
 - API Gateway: `http://localhost:8000`
 - Fraud Service: `http://localhost:8001`
@@ -81,4 +89,4 @@ pytest
 
 ## CI
 
-GitHub Actions runs on pushes to `main` and `codex/**` branches, plus pull requests. The workflow installs Python dependencies, compiles the code, and runs the test suite.
+GitHub Actions runs on every push and pull request. The workflow installs Python dependencies, compiles the code, and runs the test suite.

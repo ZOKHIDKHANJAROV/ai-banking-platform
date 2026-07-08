@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi import HTTPException
@@ -45,10 +46,6 @@ from app.services.model_loader import (
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-app = FastAPI(
-    title="Fraud Detection Service"
-)
 
 worker_task: asyncio.Task | None = None
 
@@ -151,8 +148,8 @@ async def fraud_worker():
             )
 
 
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global worker_task
 
     async with engine.begin() as conn:
@@ -167,15 +164,19 @@ async def startup():
 
     logger.info("Fraud Service started")
 
+    try:
+        yield
+    finally:
+        if worker_task is not None:
+            worker_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await worker_task
 
-@app.on_event("shutdown")
-async def shutdown():
-    global worker_task
 
-    if worker_task is not None:
-        worker_task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await worker_task
+app = FastAPI(
+    title="Fraud Detection Service",
+    lifespan=lifespan
+)
 
 
 @app.get("/")

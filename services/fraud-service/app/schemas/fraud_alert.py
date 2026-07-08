@@ -1,17 +1,19 @@
-from pydantic import BaseModel
 from datetime import datetime
+from pydantic import BaseModel
+from pydantic import ConfigDict
 
 
 class FraudAlertResponse(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True
+    )
+
     id: int
     transaction_id: int
     fraud_score: float
     fraud_probability: float
     risk_level: str
     created_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class FraudStatsResponse(BaseModel):
