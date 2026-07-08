@@ -168,3 +168,63 @@ def test_prediction_endpoints_return_saved_predictions(
     assert fetched.status_code == 200
     assert fetched.json()["id"] == prediction_id
     assert fetched.json()["model_source"] == "test-model-source"
+
+
+def test_training_log_endpoints_return_saved_logs(
+    tmp_path,
+    monkeypatch
+):
+    fraud_module = build_fraud_module(
+        tmp_path
+    )
+    prepare_fraud_app(
+        fraud_module,
+        monkeypatch
+    )
+    training_log_model_module = importlib.import_module(
+        "app.models.training_log"
+    )
+
+    async def create_tables():
+        async with fraud_module.engine.begin() as conn:
+            await conn.run_sync(
+                fraud_module.Base.metadata.create_all
+            )
+
+    async def seed_training_log():
+        async with fraud_module.AsyncSessionLocal() as session:
+            training_log = training_log_model_module.TrainingLog(
+                experiment_name="fraud-detection-registry",
+                model_name="FraudDetectionModel",
+                model_version=3,
+                run_id="run-123",
+                accuracy=0.991,
+                parameters_json='{"n_estimators": 120}',
+                metrics_json='{"accuracy": 0.991}',
+                status="SUCCESS",
+                error_message=None
+            )
+            session.add(training_log)
+            await session.commit()
+            await session.refresh(training_log)
+            return training_log.id
+
+    asyncio.run(
+        create_tables()
+    )
+    training_log_id = asyncio.run(
+        seed_training_log()
+    )
+
+    with TestClient(fraud_module.app) as client:
+        listed = client.get("/training-logs")
+        fetched = client.get(
+            f"/training-logs/{training_log_id}"
+        )
+
+    assert listed.status_code == 200
+    assert listed.json()[0]["model_name"] == "FraudDetectionModel"
+    assert listed.json()[0]["status"] == "SUCCESS"
+    assert fetched.status_code == 200
+    assert fetched.json()["id"] == training_log_id
+    assert fetched.json()["run_id"] == "run-123"

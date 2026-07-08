@@ -28,6 +28,9 @@ from app.schemas.prediction import (
     PredictionRequest,
     PredictionResponse
 )
+from app.schemas.training_log import (
+    TrainingLogResponse
+)
 from app.services.feature_store import (
     get_country,
     get_device,
@@ -77,6 +80,10 @@ from app.services.notification_events import (
 from app.services.transaction_status import (
     map_risk_level_to_transaction_status,
     update_transaction_status
+)
+from app.services.training_log_service import (
+    get_training_log_by_id,
+    get_training_logs
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -461,6 +468,39 @@ async def read_prediction(
             )
 
         return prediction
+
+
+@app.get(
+    "/training-logs",
+    response_model=list[TrainingLogResponse]
+)
+async def read_training_logs():
+    async with AsyncSessionLocal() as session:
+        return await get_training_logs(
+            session
+        )
+
+
+@app.get(
+    "/training-logs/{training_log_id}",
+    response_model=TrainingLogResponse
+)
+async def read_training_log(
+    training_log_id: int
+):
+    async with AsyncSessionLocal() as session:
+        training_log = await get_training_log_by_id(
+            session,
+            training_log_id
+        )
+
+        if training_log is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Training log not found"
+            )
+
+        return training_log
 
 
 @app.post(

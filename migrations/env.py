@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import os
 from logging.config import fileConfig
 
@@ -14,6 +15,7 @@ from sqlalchemy import Text
 from sqlalchemy import Table
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlalchemy.sql import func
 
 
@@ -26,10 +28,20 @@ database_url = os.getenv(
     "DATABASE_URL",
     "postgresql://admin:admin@localhost:5432/banking"
 )
+connectable_database_url = database_url
+
+if connectable_database_url.startswith(
+    "postgresql://"
+):
+    connectable_database_url = connectable_database_url.replace(
+        "postgresql://",
+        "postgresql+asyncpg://",
+        1
+    )
 
 config.set_main_option(
     "sqlalchemy.url",
-    database_url.replace("+asyncpg", "")
+    connectable_database_url
 )
 
 target_metadata = MetaData()
@@ -67,6 +79,22 @@ Table(
     Column("risk_level", String, nullable=False),
     Column("model_source", String, nullable=False),
     Column("features_json", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), server_default=func.now())
+)
+
+Table(
+    "training_logs",
+    target_metadata,
+    Column("id", Integer, primary_key=True),
+    Column("experiment_name", String, nullable=False),
+    Column("model_name", String, nullable=False, index=True),
+    Column("model_version", Integer, nullable=True),
+    Column("run_id", String, nullable=True, index=True),
+    Column("accuracy", Float, nullable=True),
+    Column("parameters_json", Text, nullable=False),
+    Column("metrics_json", Text, nullable=False),
+    Column("status", String, nullable=False),
+    Column("error_message", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), server_default=func.now())
 )
 
@@ -111,6 +139,16 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    connectable_url = config.get_main_option(
+        "sqlalchemy.url"
+    )
+
+    if connectable_url.startswith(
+        "postgresql+asyncpg://"
+    ):
+        asyncio.run(run_async_migrations_online())
+        return
+
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -126,6 +164,30 @@ def run_migrations_online() -> None:
 
         with context.begin_transaction():
             context.run_migrations()
+
+
+async def run_async_migrations_online() -> None:
+    connectable = async_engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool
+    )
+
+    async with connectable.connect() as connection:
+        await connection.run_sync(configure_and_run_migrations)
+
+    await connectable.dispose()
+
+
+def configure_and_run_migrations(connection) -> None:
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
 
 
 if context.is_offline_mode():

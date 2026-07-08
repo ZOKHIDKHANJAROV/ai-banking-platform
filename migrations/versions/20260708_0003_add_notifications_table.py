@@ -4,8 +4,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "20260708_0003"
-down_revision = "20260708_0002"
+revision = "20260708_0003_notifications"
+down_revision = "20260708_0002_outbox_events"
 branch_labels = None
 depends_on = None
 
