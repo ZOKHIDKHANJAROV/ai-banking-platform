@@ -44,6 +44,10 @@ from app.services.ml_fraud_engine import (
 from app.services.model_loader import (
     model_loader
 )
+from app.services.transaction_status import (
+    map_risk_level_to_transaction_status,
+    update_transaction_status
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -146,9 +150,12 @@ async def process_transaction(
     level = get_risk_level(
         probability
     )
+    transaction_status = map_risk_level_to_transaction_status(
+        level
+    )
 
     logger.info(
-        "Processed transaction_id=%s user_id=%s amount=%s country=%s previous_country=%s tx_count=%s score=%.4f probability=%.4f risk_level=%s",
+        "Processed transaction_id=%s user_id=%s amount=%s country=%s previous_country=%s tx_count=%s score=%.4f probability=%.4f risk_level=%s transaction_status=%s",
         transaction["transaction_id"],
         user_id,
         amount,
@@ -157,10 +164,23 @@ async def process_transaction(
         tx_count,
         score,
         probability,
-        level
+        level,
+        transaction_status
     )
 
     async with AsyncSessionLocal() as session:
+        status_updated = await update_transaction_status(
+            session=session,
+            transaction_id=transaction["transaction_id"],
+            status=transaction_status
+        )
+
+        if not status_updated:
+            logger.warning(
+                "Transaction %s was not found for status update",
+                transaction["transaction_id"]
+            )
+
         await save_alert(
             session=session,
             transaction_id=transaction["transaction_id"],
@@ -174,6 +194,7 @@ async def process_transaction(
         "fraud_score": score,
         "fraud_probability": probability,
         "risk_level": level,
+        "transaction_status": transaction_status,
         "tx_count": tx_count,
         "previous_country": previous_country
     }

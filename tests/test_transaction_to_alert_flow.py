@@ -80,11 +80,17 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
     assert published_events
     assert published_events[0]["topic"] == "transactions"
 
-    fraud_module = import_service_module(
-        "services/fraud-service"
-    )
+    database_path = tmp_path / "gateway-flow.db"
 
-    saved_alerts = []
+    fraud_module = import_service_module(
+        "services/fraud-service",
+        env_overrides={
+            "DATABASE_URL": f"sqlite+aiosqlite:///{database_path.as_posix()}",
+            "KAFKA_BOOTSTRAP_SERVERS": "localhost:9092",
+            "REDIS_HOST": "localhost",
+            "REDIS_PORT": "6379"
+        }
+    )
 
     async def fake_save_last_transaction(user_id, amount):
         return None
@@ -105,27 +111,6 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
         country_changed
     ):
         return 0.83
-
-    class FakeSession:
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return None
-
-    async def fake_save_alert(
-        session,
-        transaction_id,
-        score,
-        probability,
-        level
-    ):
-        saved_alerts.append({
-            "transaction_id": transaction_id,
-            "score": score,
-            "probability": probability,
-            "level": level
-        })
 
     monkeypatch.setattr(
         fraud_module,
@@ -152,15 +137,15 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
         "predict_fraud_probability",
         fake_predict_fraud_probability
     )
-    monkeypatch.setattr(
-        fraud_module,
-        "save_alert",
-        fake_save_alert
-    )
-    monkeypatch.setattr(
-        fraud_module,
-        "AsyncSessionLocal",
-        lambda: FakeSession()
+
+    async def create_fraud_tables():
+        async with fraud_module.engine.begin() as conn:
+            await conn.run_sync(
+                fraud_module.Base.metadata.create_all
+            )
+
+    asyncio.run(
+        create_fraud_tables()
     )
 
     result = asyncio.run(
@@ -169,12 +154,14 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
         )
     )
 
+    with TestClient(gateway_module.app) as client:
+        stored_transaction = client.get(
+            f"/transactions/{response.json()['id']}"
+        )
+
     assert result["transaction_id"] == response.json()["id"]
     assert result["risk_level"] == "HIGH"
+    assert result["transaction_status"] == "BLOCKED"
     assert result["fraud_probability"] == 0.83
-    assert saved_alerts == [{
-        "transaction_id": response.json()["id"],
-        "score": 1.0,
-        "probability": 0.83,
-        "level": "HIGH"
-    }]
+    assert stored_transaction.status_code == 200
+    assert stored_transaction.json()["status"] == "BLOCKED"

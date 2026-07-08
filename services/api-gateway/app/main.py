@@ -4,6 +4,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi import HTTPException
 from sqlalchemy import select
 
 from app.core.config import settings
@@ -136,6 +137,28 @@ async def get_transactions():
         )
 
         return result.scalars().all()
+
+
+@app.get(
+    "/transactions/{transaction_id}",
+    response_model=TransactionResponse
+)
+async def get_transaction(
+    transaction_id: int
+):
+    async with AsyncSessionLocal() as session:
+        transaction = await session.get(
+            Transaction,
+            transaction_id
+        )
+
+        if transaction is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Transaction not found"
+            )
+
+        return transaction
 
 
 @app.get("/outbox")

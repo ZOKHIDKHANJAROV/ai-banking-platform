@@ -12,6 +12,7 @@ def test_process_transaction_creates_high_risk_alert(
     )
 
     saved_alerts = []
+    updated_statuses = []
 
     async def fake_save_last_transaction(user_id, amount):
         return None
@@ -54,6 +55,17 @@ def test_process_transaction_creates_high_risk_alert(
             "level": level
         })
 
+    async def fake_update_transaction_status(
+        session,
+        transaction_id,
+        status
+    ):
+        updated_statuses.append({
+            "transaction_id": transaction_id,
+            "status": status
+        })
+        return True
+
     monkeypatch.setattr(
         fraud_module,
         "save_last_transaction",
@@ -86,6 +98,11 @@ def test_process_transaction_creates_high_risk_alert(
     )
     monkeypatch.setattr(
         fraud_module,
+        "update_transaction_status",
+        fake_update_transaction_status
+    )
+    monkeypatch.setattr(
+        fraud_module,
         "AsyncSessionLocal",
         lambda: FakeSession()
     )
@@ -101,9 +118,14 @@ def test_process_transaction_creates_high_risk_alert(
 
     assert result["transaction_id"] == 77
     assert result["risk_level"] == "HIGH"
+    assert result["transaction_status"] == "BLOCKED"
     assert result["fraud_probability"] == 0.91
     assert result["tx_count"] == 12
     assert result["previous_country"] == "US"
+    assert updated_statuses == [{
+        "transaction_id": 77,
+        "status": "BLOCKED"
+    }]
     assert saved_alerts == [{
         "transaction_id": 77,
         "score": 1.0,
@@ -205,3 +227,27 @@ def test_create_consumer_uses_earliest_offset_reset(
         == consumer_module.settings.KAFKA_CONSUMER_AUTO_OFFSET_RESET
     )
     assert captured["kwargs"]["auto_offset_reset"] == "earliest"
+
+
+def test_map_risk_level_to_transaction_status_defaults_to_review():
+    service_module = import_service_module(
+        "services/fraud-service",
+        module_name="app.services.transaction_status"
+    )
+
+    assert (
+        service_module.map_risk_level_to_transaction_status("LOW")
+        == "APPROVED"
+    )
+    assert (
+        service_module.map_risk_level_to_transaction_status("MEDIUM")
+        == "REVIEW"
+    )
+    assert (
+        service_module.map_risk_level_to_transaction_status("HIGH")
+        == "BLOCKED"
+    )
+    assert (
+        service_module.map_risk_level_to_transaction_status("UNKNOWN")
+        == "REVIEW"
+    )

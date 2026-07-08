@@ -175,3 +175,57 @@ def test_create_transaction_persists_for_retry_when_event_publish_fails(
     assert outbox_response.status_code == 200
     assert outbox_response.json()[0]["status"] == "FAILED"
     assert outbox_response.json()[0]["attempts"] >= 1
+
+
+def test_get_transaction_by_id_returns_record(
+    tmp_path,
+    monkeypatch
+):
+    gateway_module = build_gateway_module(
+        tmp_path
+    )
+    outbox_module = importlib.import_module(
+        "app.services.outbox"
+    )
+
+    async def noop():
+        return None
+
+    async def capture_event(topic, payload):
+        return None
+
+    monkeypatch.setattr(
+        gateway_module,
+        "start_producer",
+        noop
+    )
+    monkeypatch.setattr(
+        gateway_module,
+        "stop_producer",
+        noop
+    )
+    monkeypatch.setattr(
+        outbox_module,
+        "send_event",
+        capture_event
+    )
+
+    with TestClient(gateway_module.app) as client:
+        created = client.post(
+            "/transactions",
+            json={
+                "user_id": 99,
+                "amount": 700.0,
+                "currency": "usd",
+                "country": "uz",
+                "device_type": "web"
+            }
+        )
+        fetched = client.get(
+            f"/transactions/{created.json()['id']}"
+        )
+
+    assert created.status_code == 200
+    assert fetched.status_code == 200
+    assert fetched.json()["id"] == created.json()["id"]
+    assert fetched.json()["status"] == "QUEUED"
