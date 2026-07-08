@@ -14,9 +14,14 @@ async def save_last_transaction(
 async def get_last_transaction(
     user_id: int
 ):
-    return await redis_client.get(
+    value = await redis_client.get(
         f"user:{user_id}:last_amount"
     )
+
+    if value is None:
+        return None
+
+    return float(value)
 
 
 async def increment_transaction_count(
@@ -62,4 +67,40 @@ async def get_country(
 ):
     return await redis_client.get(
         f"user:{user_id}:country"
+    )
+
+
+async def save_device(
+    user_id: int,
+    device_type: str
+):
+    await redis_client.set(
+        f"user:{user_id}:device_type",
+        device_type
+    )
+
+
+async def get_device(
+    user_id: int
+):
+    return await redis_client.get(
+        f"user:{user_id}:device_type"
+    )
+
+
+async def save_last_transaction_time(
+    user_id: int,
+    occurred_at_iso: str
+):
+    await redis_client.set(
+        f"user:{user_id}:last_transaction_time",
+        occurred_at_iso
+    )
+
+
+async def get_last_transaction_time(
+    user_id: int
+):
+    return await redis_client.get(
+        f"user:{user_id}:last_transaction_time"
     )

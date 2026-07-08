@@ -28,18 +28,33 @@ def test_build_features_returns_expected_columns():
         amount=99.5,
         tx_count=3,
         country_risk=1,
-        country_changed=0
+        country_changed=0,
+        previous_amount=60.0,
+        amount_diff=39.5,
+        device_changed=1,
+        hour_of_day=14,
+        day_of_week=2
     )
 
     assert list(features.columns) == [
         "amount",
         "tx_count",
         "country_risk",
-        "country_changed"
+        "country_changed",
+        "previous_amount",
+        "amount_diff",
+        "device_changed",
+        "hour_of_day",
+        "day_of_week"
     ]
     assert features.iloc[0].to_dict() == {
         "amount": 99.5,
         "tx_count": 3.0,
         "country_risk": 1.0,
-        "country_changed": 0.0
+        "country_changed": 0.0,
+        "previous_amount": 60.0,
+        "amount_diff": 39.5,
+        "device_changed": 1.0,
+        "hour_of_day": 14.0,
+        "day_of_week": 2.0
     }

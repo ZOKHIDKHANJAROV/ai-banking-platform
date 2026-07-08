@@ -26,7 +26,12 @@ async def enqueue_transaction_event(
             "user_id": transaction.user_id,
             "amount": transaction.amount,
             "country": transaction.country,
-            "device_type": transaction.device_type
+            "device_type": transaction.device_type,
+            "created_at": (
+                transaction.created_at.isoformat()
+                if transaction.created_at is not None
+                else datetime.now(timezone.utc).isoformat()
+            )
         }),
         status="PENDING",
         attempts=0

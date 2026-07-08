@@ -24,6 +24,8 @@ Microservice-based fraud detection platform for banking transactions.
 - API gateway hardening with API key auth, Redis-backed rate limiting, CORS, and request/correlation IDs.
 - JWT token issuance via auth-service and bearer-token access to the API gateway.
 - MLflow Registry-based model loading with automatic latest-version resolution.
+- Fraud feature enrichment with previous amount, device change, and transaction time signals.
+- Persistent `model_predictions` records with retrieval endpoints for scoring auditability.
 - Alert retrieval, statistics, health checks, and direct `/predict` scoring.
 
 ## Project Structure
@@ -73,6 +75,8 @@ The gateway also accepts `Authorization: Bearer <jwt>` tokens issued by the auth
 - `GET /health`
 - `GET /alerts`
 - `GET /alerts/{id}`
+- `GET /predictions`
+- `GET /predictions/{id}`
 - `GET /stats`
 - `POST /predict`
 

@@ -12,6 +12,7 @@ def test_process_transaction_creates_high_risk_alert(
     )
 
     saved_alerts = []
+    saved_predictions = []
     updated_statuses = []
     published_alert_events = []
 
@@ -24,15 +25,38 @@ def test_process_transaction_creates_high_risk_alert(
     async def fake_get_country(user_id):
         return "US"
 
+    async def fake_get_last_transaction(user_id):
+        return 4000.0
+
+    async def fake_get_device(user_id):
+        return "web"
+
+    async def fake_get_last_transaction_time(user_id):
+        return "2026-07-08T08:00:00+00:00"
+
     async def fake_save_country(user_id, country):
+        return None
+
+    async def fake_save_device(user_id, device_type):
+        return None
+
+    async def fake_save_last_transaction_time(user_id, occurred_at_iso):
         return None
 
     def fake_predict_fraud_probability(
         amount,
         tx_count,
         country_risk,
-        country_changed
+        country_changed,
+        previous_amount,
+        amount_diff,
+        device_changed,
+        hour_of_day,
+        day_of_week
     ):
+        assert previous_amount == 4000.0
+        assert amount_diff == 11000.0
+        assert device_changed == 1
         return 0.91
 
     class FakeSession:
@@ -40,6 +64,9 @@ def test_process_transaction_creates_high_risk_alert(
             return self
 
         async def __aexit__(self, exc_type, exc, tb):
+            return None
+
+        async def commit(self):
             return None
 
     async def fake_save_alert(
@@ -78,6 +105,29 @@ def test_process_transaction_creates_high_risk_alert(
         })
         return True
 
+    async def fake_save_model_prediction(
+        session,
+        transaction_id,
+        fraud_probability,
+        risk_level,
+        model_source,
+        features
+    ):
+        saved_predictions.append({
+            "transaction_id": transaction_id,
+            "fraud_probability": fraud_probability,
+            "risk_level": risk_level,
+            "model_source": model_source,
+            "features": features
+        })
+        return type(
+            "SavedPrediction",
+            (),
+            {
+                "id": 901
+            }
+        )()
+
     async def fake_send_fraud_alert_event(payload):
         published_alert_events.append(payload)
 
@@ -93,13 +143,38 @@ def test_process_transaction_creates_high_risk_alert(
     )
     monkeypatch.setattr(
         fraud_module,
+        "get_last_transaction",
+        fake_get_last_transaction
+    )
+    monkeypatch.setattr(
+        fraud_module,
         "get_country",
         fake_get_country
     )
     monkeypatch.setattr(
         fraud_module,
+        "get_device",
+        fake_get_device
+    )
+    monkeypatch.setattr(
+        fraud_module,
+        "get_last_transaction_time",
+        fake_get_last_transaction_time
+    )
+    monkeypatch.setattr(
+        fraud_module,
         "save_country",
         fake_save_country
+    )
+    monkeypatch.setattr(
+        fraud_module,
+        "save_device",
+        fake_save_device
+    )
+    monkeypatch.setattr(
+        fraud_module,
+        "save_last_transaction_time",
+        fake_save_last_transaction_time
     )
     monkeypatch.setattr(
         fraud_module,
@@ -118,6 +193,11 @@ def test_process_transaction_creates_high_risk_alert(
     )
     monkeypatch.setattr(
         fraud_module,
+        "save_model_prediction",
+        fake_save_model_prediction
+    )
+    monkeypatch.setattr(
+        fraud_module,
         "send_fraud_alert_event",
         fake_send_fraud_alert_event
     )
@@ -126,13 +206,17 @@ def test_process_transaction_creates_high_risk_alert(
         "AsyncSessionLocal",
         lambda: FakeSession()
     )
+    fraud_module.model_loader._model = object()
+    fraud_module.model_loader._source = "test-model-source"
 
     result = importlib.import_module("asyncio").run(
         fraud_module.process_transaction({
             "transaction_id": 77,
             "user_id": 42,
             "amount": 15000.0,
-            "country": "NG"
+            "country": "NG",
+            "device_type": "ios",
+            "created_at": "2026-07-08T12:30:00+00:00"
         })
     )
 
@@ -143,6 +227,9 @@ def test_process_transaction_creates_high_risk_alert(
     assert result["fraud_probability"] == 0.91
     assert result["tx_count"] == 12
     assert result["previous_country"] == "US"
+    assert result["previous_amount"] == 4000.0
+    assert result["previous_device_type"] == "web"
+    assert result["prediction_id"] == 901
     assert updated_statuses == [{
         "transaction_id": 77,
         "status": "BLOCKED"
@@ -160,6 +247,23 @@ def test_process_transaction_creates_high_risk_alert(
         "score": 1.0,
         "probability": 0.91,
         "level": "HIGH"
+    }]
+    assert saved_predictions == [{
+        "transaction_id": 77,
+        "fraud_probability": 0.91,
+        "risk_level": "HIGH",
+        "model_source": "test-model-source",
+        "features": {
+            "amount": 15000.0,
+            "tx_count": 12.0,
+            "country_risk": 1.0,
+            "country_changed": 1.0,
+            "previous_amount": 4000.0,
+            "amount_diff": 11000.0,
+            "device_changed": 1.0,
+            "hour_of_day": 12.0,
+            "day_of_week": 2.0
+        }
     }]
 
 

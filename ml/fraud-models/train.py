@@ -30,8 +30,15 @@ data = pd.DataFrame({
     "amount": np.random.randint(10, 20000, rows),
     "tx_count": np.random.randint(1, 50, rows),
     "country_risk": np.random.randint(0, 2, rows),
-    "country_changed": np.random.randint(0, 2, rows)
+    "country_changed": np.random.randint(0, 2, rows),
+    "previous_amount": np.random.randint(10, 20000, rows),
+    "device_changed": np.random.randint(0, 2, rows),
+    "hour_of_day": np.random.randint(0, 24, rows),
+    "day_of_week": np.random.randint(0, 7, rows)
 })
+data["amount_diff"] = (
+    data["amount"] - data["previous_amount"]
+).abs()
 
 data["fraud"] = (
     (
@@ -47,6 +54,18 @@ data["fraud"] = (
         &
         (data["tx_count"] > 10)
     )
+    |
+    (
+        data["device_changed"] == 1
+        &
+        (data["amount_diff"] > 5000)
+    )
+    |
+    (
+        data["hour_of_day"].isin([0, 1, 2, 3, 4])
+        &
+        (data["tx_count"] > 12)
+    )
 ).astype(int)
 
 X = data[
@@ -54,7 +73,12 @@ X = data[
         "amount",
         "tx_count",
         "country_risk",
-        "country_changed"
+        "country_changed",
+        "previous_amount",
+        "amount_diff",
+        "device_changed",
+        "hour_of_day",
+        "day_of_week"
     ]
 ]
 
