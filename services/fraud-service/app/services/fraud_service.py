@@ -1,3 +1,4 @@
+from sqlalchemy import func
 from sqlalchemy import select
 
 from app.models.fraud_alert import FraudAlert
@@ -50,3 +51,40 @@ async def get_alert_by_id(
     )
 
     return result.scalar_one_or_none()
+
+
+async def get_alert_stats(session):
+
+    total_alerts = await session.scalar(
+        select(func.count(FraudAlert.id))
+    )
+
+    average_probability = await session.scalar(
+        select(func.avg(FraudAlert.fraud_probability))
+    )
+
+    high_alerts = await session.scalar(
+        select(func.count(FraudAlert.id)).where(
+            FraudAlert.risk_level == "HIGH"
+        )
+    )
+
+    medium_alerts = await session.scalar(
+        select(func.count(FraudAlert.id)).where(
+            FraudAlert.risk_level == "MEDIUM"
+        )
+    )
+
+    low_alerts = await session.scalar(
+        select(func.count(FraudAlert.id)).where(
+            FraudAlert.risk_level == "LOW"
+        )
+    )
+
+    return {
+        "total_alerts": total_alerts or 0,
+        "high_alerts": high_alerts or 0,
+        "medium_alerts": medium_alerts or 0,
+        "low_alerts": low_alerts or 0,
+        "average_fraud_probability": float(average_probability or 0.0)
+    }
