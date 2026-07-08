@@ -18,6 +18,9 @@ from app.schemas.transaction import TransactionCreate
 from app.schemas.transaction import TransactionResponse
 from app.services.kafka_producer import start_producer
 from app.services.kafka_producer import stop_producer
+from app.services.metrics import metrics_middleware
+from app.services.metrics import metrics_response
+from app.services.metrics import transactions_created_total
 from app.services.outbox import dispatch_pending_events
 from app.services.outbox import enqueue_transaction_event
 
@@ -80,6 +83,7 @@ app = FastAPI(
     title="AI Banking Platform",
     lifespan=lifespan
 )
+app.middleware("http")(metrics_middleware)
 
 
 @app.get("/", response_model=HealthResponse)
@@ -123,6 +127,9 @@ async def create_transaction(payload: TransactionCreate):
             Transaction,
             transaction.id
         )
+        transactions_created_total.labels(
+            stored_transaction.status
+        ).inc()
 
         return stored_transaction
 
@@ -184,3 +191,8 @@ async def get_outbox_events():
             }
             for event in events
         ]
+
+
+@app.get("/metrics")
+async def get_metrics():
+    return metrics_response()

@@ -8,6 +8,7 @@ Microservice-based fraud detection platform for banking transactions.
 - `fraud-service`: consumes Kafka events, calculates rule-based risk, enriches features from Redis, runs an ML model, and stores fraud alerts.
 - `notification-service`: consumes fraud alerts, builds notification messages, and stores delivery records.
 - `mlflow`: tracks experiments and serves the model registry.
+- `prometheus`, `grafana`: collect and visualize platform metrics.
 - `postgres`, `redis`, `kafka`, `zookeeper`, `qdrant`: infrastructure services used by the platform.
 
 ## Current Capabilities
@@ -18,6 +19,7 @@ Microservice-based fraud detection platform for banking transactions.
 - Fraud alert generation with a rule engine and ML model.
 - Transaction lifecycle updates after fraud scoring (`APPROVED`, `REVIEW`, `BLOCKED`).
 - Notification dispatch records generated from Kafka `fraud-alerts` events.
+- Prometheus metrics endpoints on every core service plus a preprovisioned Grafana dashboard.
 - MLflow-first model loading with a local artifact fallback.
 - Alert retrieval, statistics, health checks, and direct `/predict` scoring.
 
@@ -61,6 +63,15 @@ ai-banking-platform/
 - `GET /health`
 - `GET /notifications`
 - `GET /notifications/{id}`
+- `GET /metrics`
+
+### Monitoring
+
+- Prometheus scrapes:
+  - `api-gateway:8000/metrics`
+  - `fraud-service:8000/metrics`
+  - `notification-service:8000/metrics`
+- Grafana provisions a `Platform Overview` dashboard automatically.
 
 ## Running Locally
 
@@ -84,6 +95,8 @@ docker compose up --build
 - Fraud Service: `http://localhost:8001`
 - Notification Service: `http://localhost:8002`
 - MLflow: `http://localhost:5000`
+- Prometheus: `http://localhost:9090`
+- Grafana: `http://localhost:3000` (`admin` / `admin`)
 
 ## Training the Model
 

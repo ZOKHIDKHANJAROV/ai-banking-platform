@@ -43,6 +43,12 @@ from app.services.kafka_producer import (
     start_producer,
     stop_producer
 )
+from app.services.metrics import alerts_published_total
+from app.services.metrics import kafka_worker_retries_total
+from app.services.metrics import metrics_middleware
+from app.services.metrics import metrics_response
+from app.services.metrics import model_prediction_probability
+from app.services.metrics import transactions_processed_total
 from app.services.ml_fraud_engine import (
     predict_fraud_probability
 )
@@ -101,6 +107,7 @@ async def fraud_worker():
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            kafka_worker_retries_total.inc()
             logger.warning(
                 "Fraud worker loop failed, retrying in %s seconds: %s",
                 settings.KAFKA_CONSUMER_RETRY_DELAY_SECONDS,
@@ -161,6 +168,9 @@ async def process_transaction(
     transaction_status = map_risk_level_to_transaction_status(
         level
     )
+    model_prediction_probability.set(
+        probability
+    )
 
     logger.info(
         "Processed transaction_id=%s user_id=%s amount=%s country=%s previous_country=%s tx_count=%s score=%.4f probability=%.4f risk_level=%s transaction_status=%s",
@@ -203,6 +213,13 @@ async def process_transaction(
             transaction_status=transaction_status
         )
     )
+    transactions_processed_total.labels(
+        level,
+        transaction_status
+    ).inc()
+    alerts_published_total.labels(
+        level
+    ).inc()
 
     return {
         "transaction_id": transaction["transaction_id"],
@@ -249,6 +266,7 @@ app = FastAPI(
     title="Fraud Detection Service",
     lifespan=lifespan
 )
+app.middleware("http")(metrics_middleware)
 
 
 @app.get("/")
@@ -340,3 +358,8 @@ async def predict(
         fraud_probability=probability,
         risk_level=get_risk_level(probability)
     )
+
+
+@app.get("/metrics")
+async def get_metrics():
+    return metrics_response()

@@ -9,3 +9,4 @@ aiokafka
 
 pydantic
 pydantic-settings
+prometheus-client

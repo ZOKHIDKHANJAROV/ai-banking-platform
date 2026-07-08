@@ -17,3 +17,4 @@ scikit-learn
 
 pydantic
 pydantic-settings
+prometheus-client

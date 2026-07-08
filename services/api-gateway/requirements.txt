@@ -10,3 +10,4 @@ aiokafka
 redis
 python-dotenv
 httpx
+prometheus-client

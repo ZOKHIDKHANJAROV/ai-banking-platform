@@ -13,6 +13,9 @@ from app.db.database import Base
 from app.db.database import engine
 from app.schemas.health import HealthResponse
 from app.schemas.notification import NotificationResponse
+from app.services.metrics import kafka_worker_retries_total
+from app.services.metrics import metrics_middleware
+from app.services.metrics import metrics_response
 from app.services.notification_service import get_notification_by_id
 from app.services.notification_service import get_notifications
 from app.services.notification_service import save_notification
@@ -54,6 +57,7 @@ async def notification_worker():
         except asyncio.CancelledError:
             raise
         except Exception as exc:
+            kafka_worker_retries_total.inc()
             logger.warning(
                 "Notification worker loop failed, retrying in %s seconds: %s",
                 settings.KAFKA_CONSUMER_RETRY_DELAY_SECONDS,
@@ -92,6 +96,7 @@ app = FastAPI(
     title="Notification Service",
     lifespan=lifespan
 )
+app.middleware("http")(metrics_middleware)
 
 
 @app.get("/", response_model=HealthResponse)
@@ -138,3 +143,8 @@ async def read_notification(
             )
 
         return notification
+
+
+@app.get("/metrics")
+async def get_metrics():
+    return metrics_response()

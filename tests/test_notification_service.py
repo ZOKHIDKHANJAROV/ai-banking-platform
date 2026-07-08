@@ -48,6 +48,31 @@ def test_notification_health_endpoint(
     }
 
 
+def test_notification_metrics_endpoint(
+    tmp_path,
+    monkeypatch
+):
+    notification_module = build_notification_module(
+        tmp_path
+    )
+
+    async def fake_notification_worker():
+        await asyncio.sleep(0)
+
+    monkeypatch.setattr(
+        notification_module,
+        "notification_worker",
+        fake_notification_worker
+    )
+
+    with TestClient(notification_module.app) as client:
+        response = client.get("/metrics")
+
+    assert response.status_code == 200
+    assert "notification_service_http_requests_total" in response.text
+    assert "notification_service_notifications_created_total" in response.text
+
+
 def test_process_alert_event_persists_notification(
     tmp_path
 ):

@@ -8,6 +8,8 @@ from sqlalchemy import select
 from app.models.outbox_event import OutboxEvent
 from app.models.transaction import Transaction
 from app.services.kafka_producer import send_event
+from app.services.metrics import outbox_events_dispatched_total
+from app.services.metrics import outbox_pending_events
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +52,9 @@ async def dispatch_pending_events(
     )
 
     events = result.scalars().all()
+    outbox_pending_events.set(
+        len(events)
+    )
     published_count = 0
 
     for event in events:
@@ -74,6 +79,9 @@ async def dispatch_pending_events(
                 transaction.status = "QUEUED"
 
             published_count += 1
+            outbox_events_dispatched_total.labels(
+                "SENT"
+            ).inc()
         except Exception as exc:
             event.status = "FAILED"
             event.last_error = str(exc)[:1000]
@@ -87,7 +95,17 @@ async def dispatch_pending_events(
                 event.transaction_id,
                 exc
             )
+            outbox_events_dispatched_total.labels(
+                "FAILED"
+            ).inc()
 
     await session.commit()
+    remaining_pending = sum(
+        1 for event in events
+        if event.status in ["PENDING", "FAILED"]
+    )
+    outbox_pending_events.set(
+        remaining_pending
+    )
 
     return published_count

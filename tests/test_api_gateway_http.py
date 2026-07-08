@@ -54,6 +54,36 @@ def test_api_gateway_health_endpoint(
     }
 
 
+def test_api_gateway_metrics_endpoint(
+    tmp_path,
+    monkeypatch
+):
+    gateway_module = build_gateway_module(
+        tmp_path
+    )
+
+    async def noop():
+        return None
+
+    monkeypatch.setattr(
+        gateway_module,
+        "start_producer",
+        noop
+    )
+    monkeypatch.setattr(
+        gateway_module,
+        "stop_producer",
+        noop
+    )
+
+    with TestClient(gateway_module.app) as client:
+        response = client.get("/metrics")
+
+    assert response.status_code == 200
+    assert "api_gateway_http_requests_total" in response.text
+    assert "api_gateway_transactions_created_total" in response.text
+
+
 def test_create_transaction_marks_record_as_queued(
     tmp_path,
     monkeypatch

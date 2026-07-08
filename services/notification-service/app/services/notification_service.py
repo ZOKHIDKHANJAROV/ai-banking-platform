@@ -2,6 +2,7 @@ from sqlalchemy import func
 from sqlalchemy import select
 
 from app.models.notification import Notification
+from app.services.metrics import notifications_created_total
 
 
 RISK_LEVEL_CHANNELS = {
@@ -47,6 +48,10 @@ async def save_notification(
     session.add(notification)
     await session.commit()
     await session.refresh(notification)
+    notifications_created_total.labels(
+        notification.channel,
+        notification.status
+    ).inc()
 
     return notification
 
