@@ -1,3 +1,4 @@
+import importlib
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -60,14 +61,20 @@ def test_create_transaction_marks_record_as_queued(
     gateway_module = build_gateway_module(
         tmp_path
     )
+    outbox_module = importlib.import_module(
+        "app.services.outbox"
+    )
 
     published_events = []
 
     async def noop():
         return None
 
-    async def capture_event(payload):
-        published_events.append(payload)
+    async def capture_event(topic, payload):
+        published_events.append({
+            "topic": topic,
+            "payload": payload
+        })
 
     monkeypatch.setattr(
         gateway_module,
@@ -80,8 +87,8 @@ def test_create_transaction_marks_record_as_queued(
         noop
     )
     monkeypatch.setattr(
-        gateway_module,
-        "send_transaction_event",
+        outbox_module,
+        "send_event",
         capture_event
     )
 
@@ -103,21 +110,31 @@ def test_create_transaction_marks_record_as_queued(
     assert body["currency"] == "USD"
     assert body["country"] == "US"
     assert published_events
-    assert published_events[0]["transaction_id"] == body["id"]
+    assert published_events[0]["topic"] == "transactions"
+    assert published_events[0]["payload"]["transaction_id"] == body["id"]
+
+    with TestClient(gateway_module.app) as client:
+        outbox_response = client.get("/outbox")
+
+    assert outbox_response.status_code == 200
+    assert outbox_response.json()[0]["status"] == "SENT"
 
 
-def test_create_transaction_returns_503_when_event_publish_fails(
+def test_create_transaction_persists_for_retry_when_event_publish_fails(
     tmp_path,
     monkeypatch
 ):
     gateway_module = build_gateway_module(
         tmp_path
     )
+    outbox_module = importlib.import_module(
+        "app.services.outbox"
+    )
 
     async def noop():
         return None
 
-    async def fail_event(payload):
+    async def fail_event(topic, payload):
         raise RuntimeError("broker unavailable")
 
     monkeypatch.setattr(
@@ -131,8 +148,8 @@ def test_create_transaction_returns_503_when_event_publish_fails(
         noop
     )
     monkeypatch.setattr(
-        gateway_module,
-        "send_transaction_event",
+        outbox_module,
+        "send_event",
         fail_event
     )
 
@@ -149,8 +166,12 @@ def test_create_transaction_returns_503_when_event_publish_fails(
         )
 
         stored = client.get("/transactions")
+        outbox_response = client.get("/outbox")
 
-    assert response.status_code == 503
-    assert response.json()["detail"] == "Transaction stored but event publication failed"
+    assert response.status_code == 200
+    assert response.json()["status"] == "PENDING"
     assert stored.status_code == 200
-    assert stored.json()[0]["status"] == "EVENT_FAILED"
+    assert stored.json()[0]["status"] == "PENDING"
+    assert outbox_response.status_code == 200
+    assert outbox_response.json()[0]["status"] == "FAILED"
+    assert outbox_response.json()[0]["attempts"] >= 1

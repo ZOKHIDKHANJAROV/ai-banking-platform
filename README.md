@@ -13,6 +13,7 @@ Microservice-based fraud detection platform for banking transactions.
 
 - Real-time transaction ingestion via FastAPI.
 - Kafka event publishing from the gateway.
+- Transactional outbox delivery from the gateway to Kafka with retry support.
 - Fraud alert generation with a rule engine and ML model.
 - MLflow-first model loading with a local artifact fallback.
 - Alert retrieval, statistics, health checks, and direct `/predict` scoring.
@@ -38,6 +39,7 @@ ai-banking-platform/
 - `GET /health`
 - `POST /transactions`
 - `GET /transactions`
+- `GET /outbox`
 
 ### Fraud Service
 

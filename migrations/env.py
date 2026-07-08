@@ -10,6 +10,7 @@ from sqlalchemy import Float
 from sqlalchemy import Integer
 from sqlalchemy import MetaData
 from sqlalchemy import String
+from sqlalchemy import Text
 from sqlalchemy import Table
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
@@ -54,6 +55,20 @@ Table(
     Column("fraud_score", Float),
     Column("fraud_probability", Float, nullable=False),
     Column("risk_level", String),
+    Column("created_at", DateTime(timezone=True), server_default=func.now())
+)
+
+Table(
+    "outbox_events",
+    target_metadata,
+    Column("id", Integer, primary_key=True),
+    Column("transaction_id", Integer, nullable=False),
+    Column("topic", String, nullable=False),
+    Column("payload", Text, nullable=False),
+    Column("status", String, nullable=False),
+    Column("attempts", Integer, nullable=False),
+    Column("last_error", Text, nullable=True),
+    Column("processed_at", DateTime(timezone=True), nullable=True),
     Column("created_at", DateTime(timezone=True), server_default=func.now())
 )
 
