@@ -1,5 +1,6 @@
 import contextlib
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi import HTTPException
@@ -20,21 +21,25 @@ from app.services.kafka_producer import stop_producer
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="AI Banking Platform")
 
-
-@app.on_event("startup")
-async def startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     await start_producer()
 
+    try:
+        yield
+    finally:
+        with contextlib.suppress(Exception):
+            await stop_producer()
 
-@app.on_event("shutdown")
-async def shutdown():
-    with contextlib.suppress(Exception):
-        await stop_producer()
+
+app = FastAPI(
+    title="AI Banking Platform",
+    lifespan=lifespan
+)
 
 
 @app.get("/", response_model=HealthResponse)
