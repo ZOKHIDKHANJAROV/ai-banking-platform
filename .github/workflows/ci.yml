@@ -7,6 +7,22 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: admin
+          POSTGRES_DB: banking_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U admin -d banking_ci"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+asyncpg://admin:admin@127.0.0.1:5432/banking_ci
 
     steps:
       - name: Checkout
@@ -27,7 +43,13 @@ jobs:
           python -m pip install pytest pytest-asyncio aiosqlite
 
       - name: Compile sources
-        run: python -m compileall services tests migrations
+        run: python -m compileall services tests migrations ml
+
+      - name: Validate migration graph
+        run: python -m alembic heads
+
+      - name: Apply migrations
+        run: python -m alembic upgrade head
 
       - name: Run tests
         run: python -m pytest tests -q
