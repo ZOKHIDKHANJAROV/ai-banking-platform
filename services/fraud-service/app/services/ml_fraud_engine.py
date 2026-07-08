@@ -1,8 +1,25 @@
 import pandas as pd
 
 from app.services.model_loader import (
-    model
+    model_loader
 )
+
+
+def build_features(
+    amount,
+    tx_count,
+    country_risk,
+    country_changed
+):
+
+    return pd.DataFrame([
+        {
+            "amount": amount,
+            "tx_count": tx_count,
+            "country_risk": country_risk,
+            "country_changed": country_changed
+        }
+    ])
 
 
 def predict_fraud_probability(
@@ -12,17 +29,13 @@ def predict_fraud_probability(
     country_changed
 ):
 
-    features = pd.DataFrame([
-        {
-            "amount": amount,
-            "tx_count": tx_count,
-            "country_risk": country_risk,
-            "country_changed": country_changed
-        }
-    ])
-
-    prediction = model.predict(
-        features
+    features = build_features(
+        amount=amount,
+        tx_count=tx_count,
+        country_risk=country_risk,
+        country_changed=country_changed
     )
 
-    return float(prediction[0])
+    return model_loader.predict_probability(
+        features
+    )

@@ -1,59 +1,91 @@
 import asyncio
+import contextlib
+import logging
 
 from fastapi import FastAPI
 from fastapi import HTTPException
 
-from app.db.database import (
-    Base,
-    engine,
-    AsyncSessionLocal
-)
-
-from app.services.fraud_engine import (
-    calculate_fraud_score
-)
-
-from app.services.fraud_service import (
-    save_alert,
-    get_alerts,
-    get_alert_by_id
-)
-
 from app.consumers.transaction_consumer import (
     start_consumer
 )
-
+from app.db.database import (
+    AsyncSessionLocal,
+    Base,
+    engine
+)
+from app.schemas.fraud_alert import (
+    FraudAlertResponse,
+    FraudStatsResponse
+)
+from app.schemas.prediction import (
+    PredictionRequest,
+    PredictionResponse
+)
 from app.services.feature_store import (
-    save_last_transaction,
+    get_country,
     increment_transaction_count,
     save_country,
-    get_country
+    save_last_transaction
 )
-
-from app.schemas.fraud_alert import (
-    FraudAlertResponse
+from app.services.fraud_engine import (
+    calculate_fraud_score
 )
-
+from app.services.fraud_service import (
+    get_alert_by_id,
+    get_alert_stats,
+    get_alerts,
+    save_alert
+)
 from app.services.ml_fraud_engine import (
     predict_fraud_probability
 )
+from app.services.model_loader import (
+    model_loader
+)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Fraud Detection Service"
 )
 
+worker_task: asyncio.Task | None = None
+
+
+def get_country_features(
+    country: str,
+    previous_country: str | None
+):
+    country_risk = int(
+        country in ["NG", "KP", "IR"]
+    )
+
+    country_changed = int(
+        previous_country is not None
+        and previous_country != country
+    )
+
+    return country_risk, country_changed
+
+
+def get_risk_level(
+    probability: float
+):
+    if probability >= 0.8:
+        return "HIGH"
+
+    if probability >= 0.5:
+        return "MEDIUM"
+
+    return "LOW"
+
 
 async def fraud_worker():
-
     async for transaction in start_consumer():
-
         user_id = transaction["user_id"]
         amount = transaction["amount"]
         country = transaction["country"]
-
-        # -------------------------
-        # Feature Store
-        # -------------------------
 
         await save_last_transaction(
             user_id=user_id,
@@ -73,10 +105,6 @@ async def fraud_worker():
             country=country
         )
 
-        # -------------------------
-        # Rule Engine Score
-        # -------------------------
-
         score = calculate_fraud_score(
             amount=amount,
             country=country,
@@ -84,22 +112,10 @@ async def fraud_worker():
             previous_country=previous_country
         )
 
-        # -------------------------
-        # ML Features
-        # -------------------------
-
-        country_risk = int(
-            country in ["NG", "KP", "IR"]
+        country_risk, country_changed = get_country_features(
+            country=country,
+            previous_country=previous_country
         )
-
-        country_changed = int(
-            previous_country is not None
-            and previous_country != country
-        )
-
-        # -------------------------
-        # ML Prediction
-        # -------------------------
 
         probability = predict_fraud_probability(
             amount=amount,
@@ -108,44 +124,24 @@ async def fraud_worker():
             country_changed=country_changed
         )
 
-        # -------------------------
-        # Risk Level
-        # -------------------------
-
-        if probability >= 0.8:
-            level = "HIGH"
-
-        elif probability >= 0.5:
-            level = "MEDIUM"
-
-        else:
-            level = "LOW"
-
-        # -------------------------
-        # Logging
-        # -------------------------
-
-        print(
-            "\n"
-            "=====================================\n"
-            f"Transaction ID: {transaction['transaction_id']}\n"
-            f"User ID: {user_id}\n"
-            f"Amount: {amount}\n"
-            f"Country: {country}\n"
-            f"Previous Country: {previous_country}\n"
-            f"Transactions Last Hour: {tx_count}\n"
-            f"Rule Score: {score}\n"
-            f"ML Probability: {probability:.4f}\n"
-            f"Risk Level: {level}\n"
-            "=====================================\n"
+        level = get_risk_level(
+            probability
         )
 
-        # -------------------------
-        # Save Alert
-        # -------------------------
+        logger.info(
+            "Processed transaction_id=%s user_id=%s amount=%s country=%s previous_country=%s tx_count=%s score=%.4f probability=%.4f risk_level=%s",
+            transaction["transaction_id"],
+            user_id,
+            amount,
+            country,
+            previous_country,
+            tx_count,
+            score,
+            probability,
+            level
+        )
 
         async with AsyncSessionLocal() as session:
-
             await save_alert(
                 session=session,
                 transaction_id=transaction["transaction_id"],
@@ -157,26 +153,42 @@ async def fraud_worker():
 
 @app.on_event("startup")
 async def startup():
+    global worker_task
 
     async with engine.begin() as conn:
-
         await conn.run_sync(
             Base.metadata.create_all
         )
 
-    asyncio.create_task(
+    model_loader.load()
+    worker_task = asyncio.create_task(
         fraud_worker()
     )
 
-    print("Fraud Service started")
+    logger.info("Fraud Service started")
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    global worker_task
+
+    if worker_task is not None:
+        worker_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await worker_task
 
 
 @app.get("/")
-async def health():
+async def root():
+    return await get_health()
 
+
+@app.get("/health")
+async def get_health():
     return {
         "service": "fraud-service",
-        "status": "running"
+        "status": "running",
+        "model_source": model_loader.source
     }
 
 
@@ -185,14 +197,10 @@ async def health():
     response_model=list[FraudAlertResponse]
 )
 async def read_alerts():
-
     async with AsyncSessionLocal() as session:
-
-        alerts = await get_alerts(
+        return await get_alerts(
             session
         )
-
-        return alerts
 
 
 @app.get(
@@ -202,19 +210,60 @@ async def read_alerts():
 async def read_alert(
     alert_id: int
 ):
-
     async with AsyncSessionLocal() as session:
-
         alert = await get_alert_by_id(
             session,
             alert_id
         )
 
         if alert is None:
-
             raise HTTPException(
                 status_code=404,
                 detail="Alert not found"
             )
 
         return alert
+
+
+@app.get(
+    "/stats",
+    response_model=FraudStatsResponse
+)
+async def read_stats():
+    async with AsyncSessionLocal() as session:
+        return await get_alert_stats(
+            session
+        )
+
+
+@app.post(
+    "/predict",
+    response_model=PredictionResponse
+)
+async def predict(
+    payload: PredictionRequest
+):
+    score = calculate_fraud_score(
+        amount=payload.amount,
+        country=payload.country,
+        tx_count=payload.tx_count,
+        previous_country=payload.previous_country
+    )
+
+    country_risk, country_changed = get_country_features(
+        country=payload.country,
+        previous_country=payload.previous_country
+    )
+
+    probability = predict_fraud_probability(
+        amount=payload.amount,
+        tx_count=payload.tx_count,
+        country_risk=country_risk,
+        country_changed=country_changed
+    )
+
+    return PredictionResponse(
+        fraud_score=score,
+        fraud_probability=probability,
+        risk_level=get_risk_level(probability)
+    )
