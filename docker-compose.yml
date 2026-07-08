@@ -94,6 +94,24 @@ services:
       timeout: 5s
       retries: 5
 
+  notification-service:
+    build:
+      context: ./services/notification-service
+    container_name: notification_service
+    restart: always
+    env_file:
+      - ./services/notification-service/.env
+    depends_on:
+      - postgres
+      - kafka
+    ports:
+      - "8002:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
   mlflow:
     image: ghcr.io/mlflow/mlflow:v3.1.1
     container_name: banking_mlflow

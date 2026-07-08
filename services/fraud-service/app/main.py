@@ -38,11 +38,19 @@ from app.services.fraud_service import (
     get_alerts,
     save_alert
 )
+from app.services.kafka_producer import (
+    send_fraud_alert_event,
+    start_producer,
+    stop_producer
+)
 from app.services.ml_fraud_engine import (
     predict_fraud_probability
 )
 from app.services.model_loader import (
     model_loader
+)
+from app.services.notification_events import (
+    build_fraud_alert_event
 )
 from app.services.transaction_status import (
     map_risk_level_to_transaction_status,
@@ -181,7 +189,7 @@ async def process_transaction(
                 transaction["transaction_id"]
             )
 
-        await save_alert(
+        alert = await save_alert(
             session=session,
             transaction_id=transaction["transaction_id"],
             score=score,
@@ -189,8 +197,16 @@ async def process_transaction(
             level=level
         )
 
+    await send_fraud_alert_event(
+        build_fraud_alert_event(
+            alert=alert,
+            transaction_status=transaction_status
+        )
+    )
+
     return {
         "transaction_id": transaction["transaction_id"],
+        "alert_id": alert.id,
         "fraud_score": score,
         "fraud_probability": probability,
         "risk_level": level,
@@ -209,6 +225,7 @@ async def lifespan(app: FastAPI):
             Base.metadata.create_all
         )
 
+    await start_producer()
     model_loader.load()
     worker_task = asyncio.create_task(
         fraud_worker()
@@ -223,6 +240,9 @@ async def lifespan(app: FastAPI):
             worker_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await worker_task
+
+        with contextlib.suppress(Exception):
+            await stop_producer()
 
 
 app = FastAPI(

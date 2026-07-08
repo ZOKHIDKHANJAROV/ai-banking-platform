@@ -13,6 +13,7 @@ def test_process_transaction_creates_high_risk_alert(
 
     saved_alerts = []
     updated_statuses = []
+    published_alert_events = []
 
     async def fake_save_last_transaction(user_id, amount):
         return None
@@ -54,6 +55,17 @@ def test_process_transaction_creates_high_risk_alert(
             "probability": probability,
             "level": level
         })
+        return type(
+            "SavedAlert",
+            (),
+            {
+                "id": 301,
+                "transaction_id": transaction_id,
+                "fraud_score": score,
+                "fraud_probability": probability,
+                "risk_level": level
+            }
+        )()
 
     async def fake_update_transaction_status(
         session,
@@ -65,6 +77,9 @@ def test_process_transaction_creates_high_risk_alert(
             "status": status
         })
         return True
+
+    async def fake_send_fraud_alert_event(payload):
+        published_alert_events.append(payload)
 
     monkeypatch.setattr(
         fraud_module,
@@ -103,6 +118,11 @@ def test_process_transaction_creates_high_risk_alert(
     )
     monkeypatch.setattr(
         fraud_module,
+        "send_fraud_alert_event",
+        fake_send_fraud_alert_event
+    )
+    monkeypatch.setattr(
+        fraud_module,
         "AsyncSessionLocal",
         lambda: FakeSession()
     )
@@ -117,6 +137,7 @@ def test_process_transaction_creates_high_risk_alert(
     )
 
     assert result["transaction_id"] == 77
+    assert result["alert_id"] == 301
     assert result["risk_level"] == "HIGH"
     assert result["transaction_status"] == "BLOCKED"
     assert result["fraud_probability"] == 0.91
@@ -125,6 +146,14 @@ def test_process_transaction_creates_high_risk_alert(
     assert updated_statuses == [{
         "transaction_id": 77,
         "status": "BLOCKED"
+    }]
+    assert published_alert_events == [{
+        "alert_id": 301,
+        "transaction_id": 77,
+        "fraud_score": 1.0,
+        "fraud_probability": 0.91,
+        "risk_level": "HIGH",
+        "transaction_status": "BLOCKED"
     }]
     assert saved_alerts == [{
         "transaction_id": 77,
@@ -251,3 +280,34 @@ def test_map_risk_level_to_transaction_status_defaults_to_review():
         service_module.map_risk_level_to_transaction_status("UNKNOWN")
         == "REVIEW"
     )
+
+
+def test_build_fraud_alert_event_payload():
+    events_module = import_service_module(
+        "services/fraud-service",
+        module_name="app.services.notification_events"
+    )
+
+    alert = type(
+        "Alert",
+        (),
+        {
+            "id": 11,
+            "transaction_id": 77,
+            "fraud_score": 0.8,
+            "fraud_probability": 0.93,
+            "risk_level": "HIGH"
+        }
+    )()
+
+    assert events_module.build_fraud_alert_event(
+        alert,
+        "BLOCKED"
+    ) == {
+        "alert_id": 11,
+        "transaction_id": 77,
+        "fraud_score": 0.8,
+        "fraud_probability": 0.93,
+        "risk_level": "HIGH",
+        "transaction_status": "BLOCKED"
+    }

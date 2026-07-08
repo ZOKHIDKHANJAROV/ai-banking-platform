@@ -137,6 +137,16 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
         "predict_fraud_probability",
         fake_predict_fraud_probability
     )
+    published_alert_events = []
+
+    async def fake_send_fraud_alert_event(payload):
+        published_alert_events.append(payload)
+
+    monkeypatch.setattr(
+        fraud_module,
+        "send_fraud_alert_event",
+        fake_send_fraud_alert_event
+    )
 
     async def create_fraud_tables():
         async with fraud_module.engine.begin() as conn:
@@ -163,5 +173,8 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
     assert result["risk_level"] == "HIGH"
     assert result["transaction_status"] == "BLOCKED"
     assert result["fraud_probability"] == 0.83
+    assert published_alert_events[0]["transaction_id"] == response.json()["id"]
+    assert published_alert_events[0]["risk_level"] == "HIGH"
+    assert published_alert_events[0]["transaction_status"] == "BLOCKED"
     assert stored_transaction.status_code == 200
     assert stored_transaction.json()["status"] == "BLOCKED"

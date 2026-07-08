@@ -6,6 +6,7 @@ Microservice-based fraud detection platform for banking transactions.
 
 - `api-gateway`: accepts transactions, persists them, and publishes Kafka events.
 - `fraud-service`: consumes Kafka events, calculates rule-based risk, enriches features from Redis, runs an ML model, and stores fraud alerts.
+- `notification-service`: consumes fraud alerts, builds notification messages, and stores delivery records.
 - `mlflow`: tracks experiments and serves the model registry.
 - `postgres`, `redis`, `kafka`, `zookeeper`, `qdrant`: infrastructure services used by the platform.
 
@@ -16,6 +17,7 @@ Microservice-based fraud detection platform for banking transactions.
 - Transactional outbox delivery from the gateway to Kafka with retry support.
 - Fraud alert generation with a rule engine and ML model.
 - Transaction lifecycle updates after fraud scoring (`APPROVED`, `REVIEW`, `BLOCKED`).
+- Notification dispatch records generated from Kafka `fraud-alerts` events.
 - MLflow-first model loading with a local artifact fallback.
 - Alert retrieval, statistics, health checks, and direct `/predict` scoring.
 
@@ -28,7 +30,8 @@ ai-banking-platform/
 |   `-- fraud-models/
 |-- services/
 |   |-- api-gateway/
-|   `-- fraud-service/
+|   |-- fraud-service/
+|   `-- notification-service/
 `-- tests/
 ```
 
@@ -52,6 +55,13 @@ ai-banking-platform/
 - `GET /stats`
 - `POST /predict`
 
+### Notification Service
+
+- `GET /`
+- `GET /health`
+- `GET /notifications`
+- `GET /notifications/{id}`
+
 ## Running Locally
 
 1. Start Docker Desktop or another Docker engine.
@@ -72,6 +82,7 @@ docker compose up --build
 
 - API Gateway: `http://localhost:8000`
 - Fraud Service: `http://localhost:8001`
+- Notification Service: `http://localhost:8002`
 - MLflow: `http://localhost:5000`
 
 ## Training the Model

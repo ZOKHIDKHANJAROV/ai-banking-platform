@@ -22,6 +22,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r services/api-gateway/requirements.txt
           python -m pip install -r services/fraud-service/requirements.txt
+          python -m pip install -r services/notification-service/requirements.txt
           python -m pip install pytest pytest-asyncio aiosqlite
 
       - name: Compile sources

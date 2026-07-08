@@ -72,6 +72,19 @@ Table(
     Column("created_at", DateTime(timezone=True), server_default=func.now())
 )
 
+Table(
+    "notifications",
+    target_metadata,
+    Column("id", Integer, primary_key=True),
+    Column("alert_id", Integer, nullable=False, index=True),
+    Column("transaction_id", Integer, nullable=False, index=True),
+    Column("channel", String, nullable=False),
+    Column("recipient", String, nullable=False),
+    Column("message", String, nullable=False),
+    Column("status", String, nullable=False),
+    Column("created_at", DateTime(timezone=True), server_default=func.now())
+)
+
 
 def run_migrations_offline() -> None:
     context.configure(
