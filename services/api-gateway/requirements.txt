@@ -11,3 +11,4 @@ redis
 python-dotenv
 httpx
 prometheus-client
+PyJWT

@@ -1,5 +1,6 @@
 import importlib
 from pathlib import Path
+import jwt
 
 from fastapi.testclient import TestClient
 
@@ -10,6 +11,7 @@ def build_gateway_module(
     tmp_path: Path
 ):
     database_path = tmp_path / "api-gateway-test.db"
+    jwt_secret = "test-secret-with-32-byte-min-length"
 
     return import_service_module(
         "services/api-gateway",
@@ -19,6 +21,10 @@ def build_gateway_module(
             "REDIS_HOST": "localhost",
             "REDIS_PORT": "6379",
             "API_KEY": "test-api-key",
+            "JWT_SECRET": jwt_secret,
+            "JWT_ALGORITHM": "HS256",
+            "JWT_AUDIENCE": "ai-banking-platform",
+            "JWT_ISSUER": "auth-service",
             "ALLOWED_ORIGINS": "http://localhost:3000",
             "RATE_LIMIT_BACKEND": "memory",
             "RATE_LIMIT_REQUESTS": "10",
@@ -30,6 +36,23 @@ def build_gateway_module(
 def auth_headers():
     return {
         "X-API-Key": "test-api-key"
+    }
+
+
+def bearer_headers(
+    subject: str = "bank-ops"
+):
+    token = jwt.encode(
+        {
+            "sub": subject,
+            "aud": "ai-banking-platform",
+            "iss": "auth-service"
+        },
+        "test-secret-with-32-byte-min-length",
+        algorithm="HS256"
+    )
+    return {
+        "Authorization": f"Bearer {token}"
     }
 
 
@@ -157,7 +180,72 @@ def test_gateway_rejects_missing_api_key(
         response = client.get("/transactions")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "Invalid or missing API key"
+    assert response.json()["detail"] == "Invalid or missing credentials"
+
+
+def test_gateway_accepts_valid_bearer_token(
+    tmp_path,
+    monkeypatch
+):
+    gateway_module = build_gateway_module(
+        tmp_path
+    )
+
+    async def noop():
+        return None
+
+    monkeypatch.setattr(
+        gateway_module,
+        "start_producer",
+        noop
+    )
+    monkeypatch.setattr(
+        gateway_module,
+        "stop_producer",
+        noop
+    )
+
+    with TestClient(gateway_module.app) as client:
+        response = client.get(
+            "/transactions",
+            headers=bearer_headers()
+        )
+
+    assert response.status_code == 200
+
+
+def test_gateway_rejects_invalid_bearer_token(
+    tmp_path,
+    monkeypatch
+):
+    gateway_module = build_gateway_module(
+        tmp_path
+    )
+
+    async def noop():
+        return None
+
+    monkeypatch.setattr(
+        gateway_module,
+        "start_producer",
+        noop
+    )
+    monkeypatch.setattr(
+        gateway_module,
+        "stop_producer",
+        noop
+    )
+
+    with TestClient(gateway_module.app) as client:
+        response = client.get(
+            "/transactions",
+            headers={
+                "Authorization": "Bearer invalid-token"
+            }
+        )
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid bearer token"
 
 
 def test_gateway_rate_limits_authenticated_requests(

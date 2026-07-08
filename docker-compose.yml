@@ -63,11 +63,27 @@ services:
     env_file:
       - ./services/api-gateway/.env
     depends_on:
+      - auth-service
       - postgres
       - kafka
       - redis
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+    container_name: auth_service
+    restart: always
+    env_file:
+      - ./services/auth-service/.env
+    ports:
+      - "8003:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/', timeout=3)"]
       interval: 20s

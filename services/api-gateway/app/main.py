@@ -68,6 +68,10 @@ async def lifespan(app: FastAPI):
 
     app.state.api_key = settings.API_KEY
     app.state.api_key_header_name = settings.API_KEY_HEADER_NAME
+    app.state.jwt_secret = settings.JWT_SECRET
+    app.state.jwt_algorithm = settings.JWT_ALGORITHM
+    app.state.jwt_audience = settings.JWT_AUDIENCE
+    app.state.jwt_issuer = settings.JWT_ISSUER
     app.state.rate_limiter = await create_rate_limiter(
         settings
     )

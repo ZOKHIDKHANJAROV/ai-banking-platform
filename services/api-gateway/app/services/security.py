@@ -1,6 +1,7 @@
 import logging
 import uuid
 
+import jwt
 from fastapi import Request
 from starlette.responses import JSONResponse
 
@@ -24,6 +25,27 @@ def is_public_path(
     path: str
 ) -> bool:
     return path in PUBLIC_PATH_PREFIXES
+
+
+def validate_bearer_token(
+    token: str,
+    request: Request
+) -> str:
+    payload = jwt.decode(
+        token,
+        request.app.state.jwt_secret,
+        algorithms=[request.app.state.jwt_algorithm],
+        audience=request.app.state.jwt_audience,
+        issuer=request.app.state.jwt_issuer
+    )
+    subject = payload.get("sub")
+
+    if not subject:
+        raise jwt.InvalidTokenError(
+            "Missing subject"
+        )
+
+    return subject
 
 
 async def request_context_middleware(
@@ -56,23 +78,47 @@ async def security_middleware(
     ):
         return await call_next(request)
 
+    auth_header = request.headers.get(
+        "Authorization",
+        ""
+    )
     api_key = request.headers.get(
         request.app.state.api_key_header_name
     )
+    principal = None
 
-    if api_key != request.app.state.api_key:
+    if auth_header.startswith("Bearer "):
+        token = auth_header.removeprefix(
+            "Bearer "
+        ).strip()
+
+        try:
+            principal = (
+                f"jwt:{validate_bearer_token(token, request)}"
+            )
+        except jwt.InvalidTokenError:
+            api_gateway_unauthorized_requests_total.inc()
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "detail": "Invalid bearer token"
+                }
+            )
+    elif api_key == request.app.state.api_key:
+        principal = f"api-key:{api_key}"
+    else:
         api_gateway_unauthorized_requests_total.inc()
         return JSONResponse(
             status_code=401,
             content={
-                "detail": "Invalid or missing API key"
+                "detail": "Invalid or missing credentials"
             }
         )
 
     client_host = request.client.host if request.client else "unknown"
     rate_limit_key = (
         "gateway-rate-limit:"
-        f"{api_key}:{client_host}:{request.url.path}"
+        f"{principal}:{client_host}:{request.url.path}"
     )
 
     allowed = await request.app.state.rate_limiter.allow_request(

@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     REDIS_PORT: int
     API_KEY: str = "dev-gateway-key"
     API_KEY_HEADER_NAME: str = "X-API-Key"
+    JWT_SECRET: str = "super-secret-jwt-key-with-32-byte-length"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_AUDIENCE: str = "ai-banking-platform"
+    JWT_ISSUER: str = "auth-service"
     ALLOWED_ORIGINS: str = "http://localhost:3000"
     RATE_LIMIT_BACKEND: str = "redis"
     RATE_LIMIT_REQUESTS: int = 60

@@ -7,6 +7,7 @@ Microservice-based fraud detection platform for banking transactions.
 - `api-gateway`: accepts transactions, persists them, and publishes Kafka events.
 - `fraud-service`: consumes Kafka events, calculates rule-based risk, enriches features from Redis, runs an ML model, and stores fraud alerts.
 - `notification-service`: consumes fraud alerts, builds notification messages, and stores delivery records.
+- `auth-service`: issues JWT access tokens for protected gateway access.
 - `mlflow`: tracks experiments and serves the model registry.
 - `prometheus`, `grafana`: collect and visualize platform metrics.
 - `postgres`, `redis`, `kafka`, `zookeeper`, `qdrant`: infrastructure services used by the platform.
@@ -21,6 +22,7 @@ Microservice-based fraud detection platform for banking transactions.
 - Notification dispatch records generated from Kafka `fraud-alerts` events.
 - Prometheus metrics endpoints on every core service plus a preprovisioned Grafana dashboard.
 - API gateway hardening with API key auth, Redis-backed rate limiting, CORS, and request/correlation IDs.
+- JWT token issuance via auth-service and bearer-token access to the API gateway.
 - MLflow-first model loading with a local artifact fallback.
 - Alert retrieval, statistics, health checks, and direct `/predict` scoring.
 
@@ -33,6 +35,7 @@ ai-banking-platform/
 |   `-- fraud-models/
 |-- services/
 |   |-- api-gateway/
+|   |-- auth-service/
 |   |-- fraud-service/
 |   `-- notification-service/
 `-- tests/
@@ -53,6 +56,15 @@ ai-banking-platform/
 Protected gateway endpoints require the `X-API-Key` header. Public endpoints remain:
 - `GET /`
 - `GET /health`
+- `GET /metrics`
+
+The gateway also accepts `Authorization: Bearer <jwt>` tokens issued by the auth service.
+
+### Auth Service
+
+- `GET /`
+- `GET /health`
+- `POST /token`
 - `GET /metrics`
 
 ### Fraud Service
@@ -101,6 +113,7 @@ docker compose up --build
 - API Gateway: `http://localhost:8000`
 - Fraud Service: `http://localhost:8001`
 - Notification Service: `http://localhost:8002`
+- Auth Service: `http://localhost:8003`
 - MLflow: `http://localhost:5000`
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3000` (`admin` / `admin`)
