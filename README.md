@@ -157,4 +157,11 @@ pytest
 
 ## CI
 
-GitHub Actions runs on every push and pull request. The workflow installs Python dependencies, compiles the code, and runs the test suite.
+GitHub Actions runs on every push, pull request, and manual dispatch. The workflow:
+
+- installs dependencies with pip cache enabled
+- compiles `services`, `tests`, `migrations`, and `ml`
+- validates the Alembic graph and applies migrations on a fresh PostgreSQL service
+- verifies the migrated schema with a Postgres-backed smoke test
+- runs the full pytest suite
+- builds Docker images for `api-gateway`, `auth-service`, `fraud-service`, `notification-service`, and `scoring-service`

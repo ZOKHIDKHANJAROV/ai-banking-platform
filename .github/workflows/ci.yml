@@ -3,10 +3,19 @@ name: CI
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:16
@@ -32,6 +41,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            services/api-gateway/requirements.txt
+            services/auth-service/requirements.txt
+            services/fraud-service/requirements.txt
+            services/notification-service/requirements.txt
+            services/scoring-service/requirements.txt
 
       - name: Install dependencies
         run: |
@@ -52,5 +68,28 @@ jobs:
       - name: Apply migrations
         run: python -m alembic upgrade head
 
+      - name: Verify migrated schema
+        run: python -m pytest tests/test_migration_schema.py -q
+
       - name: Run tests
         run: python -m pytest tests -q
+
+  docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - api-gateway
+          - auth-service
+          - fraud-service
+          - notification-service
+          - scoring-service
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build ${{ matrix.service }} image
+        run: docker build services/${{ matrix.service }}
