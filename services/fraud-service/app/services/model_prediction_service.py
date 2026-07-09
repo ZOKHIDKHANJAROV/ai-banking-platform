@@ -10,6 +10,10 @@ async def save_model_prediction(
     transaction_id: int,
     fraud_probability: float,
     risk_level: str,
+    model_name: str,
+    model_version: str | None,
+    model_role: str,
+    is_live_decision: bool,
     model_source: str,
     features: dict
 ):
@@ -17,6 +21,10 @@ async def save_model_prediction(
         transaction_id=transaction_id,
         fraud_probability=fraud_probability,
         risk_level=risk_level,
+        model_name=model_name,
+        model_version=model_version,
+        model_role=model_role,
+        is_live_decision=is_live_decision,
         model_source=model_source,
         features_json=json.dumps(
             features,

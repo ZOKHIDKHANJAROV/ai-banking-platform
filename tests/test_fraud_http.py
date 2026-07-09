@@ -70,14 +70,20 @@ def test_predict_endpoint_uses_extended_features(
 
     captured = {}
 
-    def fake_predict_fraud_probability(**kwargs):
-        captured.update(kwargs)
-        return 0.72
+    def fake_evaluate_model_candidates(features):
+        captured.update(
+            features.iloc[0].to_dict()
+        )
+        return {
+            "champion_probability": 0.72,
+            "challenger_probability": None,
+            "probability_delta": None
+        }
 
     monkeypatch.setattr(
         fraud_module,
-        "predict_fraud_probability",
-        fake_predict_fraud_probability
+        "evaluate_model_candidates",
+        fake_evaluate_model_candidates
     )
 
     with TestClient(fraud_module.app) as client:
@@ -99,11 +105,12 @@ def test_predict_endpoint_uses_extended_features(
     assert response.json() == {
         "fraud_score": 0.5,
         "fraud_probability": 0.72,
-        "risk_level": "MEDIUM"
+        "risk_level": "MEDIUM",
+        "decision_model_role": "CHAMPION"
     }
     assert captured == {
         "amount": 1250.0,
-        "tx_count": 9,
+        "tx_count": 9.0,
         "country_risk": 1,
         "country_changed": 1,
         "previous_amount": 200.0,
@@ -140,6 +147,58 @@ def test_fraud_health_returns_request_context_headers(
     assert response.headers["X-Correlation-ID"] == "corr-fraud-1"
 
 
+def test_predict_endpoint_returns_challenger_shadow_details(
+    tmp_path,
+    monkeypatch
+):
+    fraud_module = build_fraud_module(
+        tmp_path
+    )
+    prepare_fraud_app(
+        fraud_module,
+        monkeypatch
+    )
+
+    def fake_evaluate_model_candidates(features):
+        return {
+            "champion_probability": 0.84,
+            "challenger_probability": 0.48,
+            "probability_delta": 0.36
+        }
+
+    monkeypatch.setattr(
+        fraud_module,
+        "evaluate_model_candidates",
+        fake_evaluate_model_candidates
+    )
+
+    with TestClient(fraud_module.app) as client:
+        response = client.post(
+            "/predict",
+            json={
+                "amount": 5400.0,
+                "tx_count": 4,
+                "country": "US",
+                "device_type": "ios",
+                "previous_country": "US",
+                "previous_amount": 1000.0,
+                "previous_device_type": "ios",
+                "transaction_at": "2026-07-08T09:15:00+00:00"
+            }
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "fraud_score": 0.3,
+        "fraud_probability": 0.84,
+        "risk_level": "HIGH",
+        "decision_model_role": "CHAMPION",
+        "challenger_fraud_probability": 0.48,
+        "challenger_risk_level": "LOW",
+        "probability_delta": 0.36
+    }
+
+
 def test_prediction_endpoints_return_saved_predictions(
     tmp_path,
     monkeypatch
@@ -167,6 +226,10 @@ def test_prediction_endpoints_return_saved_predictions(
                 transaction_id=81,
                 fraud_probability=0.88,
                 risk_level="HIGH",
+                model_name="FraudDetectionModel",
+                model_version="7",
+                model_role="CHAMPION",
+                is_live_decision=True,
                 model_source="test-model-source",
                 features_json='{"amount": 9000.0}'
             )

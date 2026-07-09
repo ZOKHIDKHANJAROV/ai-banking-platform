@@ -8,9 +8,27 @@ logger = logging.getLogger(__name__)
 
 
 class ModelLoader:
-    def __init__(self):
+    def __init__(
+        self,
+        *,
+        model_name: str | None = None,
+        model_stage: str | None = None,
+        role: str = "champion",
+        enabled: bool = True
+    ):
         self._model = None
         self._source = "uninitialized"
+        self._version = None
+        self._model_name = (
+            model_name
+            or settings.MLFLOW_MODEL_NAME
+        )
+        self._model_stage = (
+            model_stage
+            or settings.MLFLOW_MODEL_STAGE
+        )
+        self._role = role.upper()
+        self._enabled = enabled
 
     def _get_mlflow(self):
         import mlflow
@@ -24,7 +42,7 @@ class ModelLoader:
         )
 
         return client.search_model_versions(
-            f"name = '{settings.MLFLOW_MODEL_NAME}'"
+            f"name = '{self._model_name}'"
         )
 
     def _resolve_model_version(self):
@@ -33,10 +51,10 @@ class ModelLoader:
         if not versions:
             raise RuntimeError(
                 "No registered MLflow model versions found for "
-                f"{settings.MLFLOW_MODEL_NAME}"
+                f"{self._model_name}"
             )
 
-        stage = settings.MLFLOW_MODEL_STAGE.strip()
+        stage = self._model_stage.strip()
 
         if stage and stage.lower() != "latest":
             matching_versions = [
@@ -52,7 +70,7 @@ class ModelLoader:
             if not matching_versions:
                 raise RuntimeError(
                     "No registered MLflow model versions found for "
-                    f"{settings.MLFLOW_MODEL_NAME} in stage {stage}"
+                    f"{self._model_name} in stage {stage}"
                 )
 
             return max(
@@ -117,6 +135,9 @@ class ModelLoader:
         )
 
     def load(self):
+        if not self._enabled:
+            return None
+
         if self._model is not None:
             return self._model
 
@@ -127,7 +148,11 @@ class ModelLoader:
         version, model_uri = self._resolve_model_uri()
 
         logger.info(
-            "Loading fraud model from MLflow registry version=%s uri=%s",
+            "Loading %s fraud model from MLflow registry "
+            "name=%s stage=%s version=%s uri=%s",
+            self._role.lower(),
+            self._model_name,
+            self._model_stage,
             version.version,
             model_uri
         )
@@ -136,11 +161,17 @@ class ModelLoader:
             model_uri
         )
         self._source = model_uri
+        self._version = str(version.version)
 
         return self._model
 
     def predict_probability(self, features):
         model = self.load()
+
+        if model is None:
+            raise RuntimeError(
+                f"{self._role.title()} model is not enabled"
+            )
 
         if hasattr(model, "predict_proba"):
             probabilities = model.predict_proba(
@@ -163,10 +194,38 @@ class ModelLoader:
 
     @property
     def source(self):
-        if self._model is None:
+        if self._model is None and self._enabled:
             self.load()
 
         return self._source
 
+    @property
+    def version(self):
+        if self._model is None and self._enabled:
+            self.load()
+
+        return self._version
+
+    @property
+    def model_name(self):
+        return self._model_name
+
+    @property
+    def role(self):
+        return self._role
+
+    @property
+    def is_enabled(self):
+        return self._enabled
+
 
 model_loader = ModelLoader()
+challenger_model_loader = ModelLoader(
+    model_name=(
+        settings.MLFLOW_CHALLENGER_MODEL_NAME
+        or settings.MLFLOW_MODEL_NAME
+    ),
+    model_stage=settings.MLFLOW_CHALLENGER_MODEL_STAGE,
+    role="challenger",
+    enabled=settings.MLFLOW_ENABLE_CHALLENGER_SHADOW
+)

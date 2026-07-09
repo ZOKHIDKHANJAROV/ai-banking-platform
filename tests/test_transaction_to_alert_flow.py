@@ -137,18 +137,12 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
     async def fake_save_last_transaction_time(user_id, occurred_at_iso):
         return None
 
-    def fake_predict_fraud_probability(
-        amount,
-        tx_count,
-        country_risk,
-        country_changed,
-        previous_amount,
-        amount_diff,
-        device_changed,
-        hour_of_day,
-        day_of_week
-    ):
-        return 0.83
+    def fake_evaluate_model_candidates(features):
+        return {
+            "champion_probability": 0.83,
+            "challenger_probability": None,
+            "probability_delta": None
+        }
 
     monkeypatch.setattr(
         fraud_module,
@@ -197,8 +191,8 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
     )
     monkeypatch.setattr(
         fraud_module,
-        "predict_fraud_probability",
-        fake_predict_fraud_probability
+        "evaluate_model_candidates",
+        fake_evaluate_model_candidates
     )
     published_alert_events = []
 
@@ -210,6 +204,10 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
         transaction_id,
         fraud_probability,
         risk_level,
+        model_name,
+        model_version,
+        model_role,
+        is_live_decision,
         model_source,
         features
     ):

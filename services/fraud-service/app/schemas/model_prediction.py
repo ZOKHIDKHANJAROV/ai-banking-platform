@@ -13,6 +13,10 @@ class ModelPredictionResponse(BaseModel):
     transaction_id: int
     fraud_probability: float
     risk_level: str
+    model_name: str
+    model_version: str | None
+    model_role: str
+    is_live_decision: bool
     model_source: str
     features_json: str
     created_at: datetime

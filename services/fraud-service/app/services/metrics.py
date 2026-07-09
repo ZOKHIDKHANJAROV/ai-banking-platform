@@ -52,6 +52,26 @@ model_prediction_probability = Gauge(
     registry=registry
 )
 
+model_predictions_total = Counter(
+    "fraud_service_model_predictions_total",
+    "Stored model predictions by model role and risk level.",
+    ["model_role", "risk_level", "decision_mode"],
+    registry=registry
+)
+
+champion_challenger_probability_delta = Histogram(
+    "fraud_service_champion_challenger_probability_delta",
+    "Absolute probability delta between champion and challenger models.",
+    registry=registry
+)
+
+champion_challenger_disagreements_total = Counter(
+    "fraud_service_champion_challenger_disagreements_total",
+    "Disagreements between champion and challenger risk levels.",
+    ["champion_risk_level", "challenger_risk_level"],
+    registry=registry
+)
+
 
 async def metrics_middleware(
     request: Request,

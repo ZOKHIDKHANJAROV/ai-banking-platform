@@ -6,6 +6,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from sqlalchemy import Column
+from sqlalchemy import Boolean
 from sqlalchemy import DateTime
 from sqlalchemy import Float
 from sqlalchemy import Integer
@@ -77,6 +78,10 @@ Table(
     Column("transaction_id", Integer, nullable=False, index=True),
     Column("fraud_probability", Float, nullable=False),
     Column("risk_level", String, nullable=False),
+    Column("model_name", String, nullable=False),
+    Column("model_version", String, nullable=True),
+    Column("model_role", String, nullable=False),
+    Column("is_live_decision", Boolean, nullable=False),
     Column("model_source", String, nullable=False),
     Column("features_json", Text, nullable=False),
     Column("created_at", DateTime(timezone=True), server_default=func.now())

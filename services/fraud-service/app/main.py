@@ -60,16 +60,20 @@ from app.services.kafka_producer import (
     stop_producer
 )
 from app.services.metrics import alerts_published_total
+from app.services.metrics import champion_challenger_disagreements_total
+from app.services.metrics import champion_challenger_probability_delta
 from app.services.metrics import kafka_worker_retries_total
 from app.services.metrics import metrics_middleware
 from app.services.metrics import metrics_response
+from app.services.metrics import model_predictions_total
 from app.services.metrics import model_prediction_probability
 from app.services.metrics import transactions_processed_total
+from app.services.champion_challenger import evaluate_model_candidates
 from app.services.ml_fraud_engine import (
     build_features,
-    predict_fraud_probability
 )
 from app.services.model_loader import (
+    challenger_model_loader,
     model_loader
 )
 from app.services.model_prediction_service import (
@@ -234,17 +238,12 @@ async def process_transaction(
             day_of_week=day_of_week
         )
 
-        probability = predict_fraud_probability(
-            amount=amount,
-            tx_count=tx_count,
-            country_risk=country_risk,
-            country_changed=country_changed,
-            previous_amount=baseline_amount,
-            amount_diff=amount_diff,
-            device_changed=device_changed,
-            hour_of_day=hour_of_day,
-            day_of_week=day_of_week
+        model_candidates = evaluate_model_candidates(
+            features
         )
+        probability = model_candidates["champion_probability"]
+        challenger_probability = model_candidates["challenger_probability"]
+        probability_delta = model_candidates["probability_delta"]
         await save_last_transaction(
             user_id=user_id,
             amount=amount
@@ -271,6 +270,36 @@ async def process_transaction(
         model_prediction_probability.set(
             probability
         )
+        challenger_level = None
+
+        if challenger_probability is not None:
+            challenger_level = get_risk_level(
+                challenger_probability
+            )
+            champion_challenger_probability_delta.observe(
+                probability_delta or 0.0
+            )
+
+            if (
+                probability_delta is not None
+                and probability_delta >= settings.CHAMPION_CHALLENGER_DELTA_THRESHOLD
+            ):
+                logger.warning(
+                    "Champion and challenger models diverged materially",
+                    extra={
+                        "event": "fraud.model.divergence",
+                        "transaction_id": transaction["transaction_id"],
+                        "champion_probability": probability,
+                        "challenger_probability": challenger_probability,
+                        "probability_delta": probability_delta
+                    }
+                )
+
+            if challenger_level != level:
+                champion_challenger_disagreements_total.labels(
+                    level,
+                    challenger_level
+                ).inc()
 
         logger.info(
             "Processed transaction for fraud evaluation",
@@ -310,9 +339,40 @@ async def process_transaction(
                 transaction_id=transaction["transaction_id"],
                 fraud_probability=probability,
                 risk_level=level,
+                model_name=model_loader.model_name,
+                model_version=model_loader.version,
+                model_role=model_loader.role,
+                is_live_decision=True,
                 model_source=model_loader.source,
                 features=features.iloc[0].to_dict()
             )
+            model_predictions_total.labels(
+                model_loader.role,
+                level,
+                "LIVE"
+            ).inc()
+
+            challenger_prediction_id = None
+
+            if challenger_probability is not None:
+                challenger_prediction = await save_model_prediction(
+                    session=session,
+                    transaction_id=transaction["transaction_id"],
+                    fraud_probability=challenger_probability,
+                    risk_level=challenger_level,
+                    model_name=challenger_model_loader.model_name,
+                    model_version=challenger_model_loader.version,
+                    model_role=challenger_model_loader.role,
+                    is_live_decision=False,
+                    model_source=challenger_model_loader.source,
+                    features=features.iloc[0].to_dict()
+                )
+                challenger_prediction_id = challenger_prediction.id
+                model_predictions_total.labels(
+                    challenger_model_loader.role,
+                    challenger_level,
+                    "SHADOW"
+                ).inc()
             await session.commit()
 
         await send_fraud_alert_event(
@@ -343,7 +403,11 @@ async def process_transaction(
             "previous_amount": previous_amount,
             "previous_device_type": previous_device_type,
             "previous_transaction_time": previous_transaction_time,
-            "prediction_id": prediction.id
+            "prediction_id": prediction.id,
+            "challenger_prediction_id": challenger_prediction_id,
+            "challenger_fraud_probability": challenger_probability,
+            "challenger_risk_level": challenger_level,
+            "probability_delta": probability_delta
         }
 
 
@@ -358,6 +422,10 @@ async def lifespan(app: FastAPI):
 
     await start_producer()
     model_loader.load()
+
+    if challenger_model_loader.is_enabled:
+        challenger_model_loader.load()
+
     worker_task = asyncio.create_task(
         fraud_worker()
     )
@@ -394,7 +462,13 @@ async def get_health():
     return {
         "service": "fraud-service",
         "status": "running",
-        "model_source": model_loader.source
+        "model_source": model_loader.source,
+        "challenger_shadow_enabled": challenger_model_loader.is_enabled,
+        "challenger_model_source": (
+            challenger_model_loader.source
+            if challenger_model_loader.is_enabled
+            else None
+        )
     }
 
 
@@ -510,7 +584,8 @@ async def read_training_log(
 
 @app.post(
     "/predict",
-    response_model=PredictionResponse
+    response_model=PredictionResponse,
+    response_model_exclude_none=True
 )
 async def predict(
     payload: PredictionRequest
@@ -538,7 +613,7 @@ async def predict(
         timezone.utc
     )
 
-    probability = predict_fraud_probability(
+    features = build_features(
         amount=payload.amount,
         tx_count=payload.tx_count,
         country_risk=country_risk,
@@ -549,11 +624,26 @@ async def predict(
         hour_of_day=transaction_time.hour,
         day_of_week=transaction_time.weekday()
     )
+    model_candidates = evaluate_model_candidates(
+        features
+    )
+    probability = model_candidates["champion_probability"]
+    challenger_probability = model_candidates["challenger_probability"]
+    probability_delta = model_candidates["probability_delta"]
+    challenger_risk_level = None
+
+    if challenger_probability is not None:
+        challenger_risk_level = get_risk_level(
+            challenger_probability
+        )
 
     return PredictionResponse(
         fraud_score=score,
         fraud_probability=probability,
-        risk_level=get_risk_level(probability)
+        risk_level=get_risk_level(probability),
+        challenger_fraud_probability=challenger_probability,
+        challenger_risk_level=challenger_risk_level,
+        probability_delta=probability_delta
     )
 
 

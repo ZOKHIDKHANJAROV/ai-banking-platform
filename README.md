@@ -25,8 +25,9 @@ Microservice-based fraud detection platform for banking transactions.
 - API gateway hardening with API key auth, Redis-backed rate limiting, CORS, and request/correlation IDs.
 - JWT token issuance via auth-service and bearer-token access to the API gateway.
 - MLflow Registry-based model loading with automatic latest-version resolution.
+- Optional champion-challenger shadow scoring for fraud models with audit persistence and divergence metrics.
 - Fraud feature enrichment with previous amount, device change, and transaction time signals.
-- Persistent `model_predictions` records with retrieval endpoints for scoring auditability.
+- Persistent `model_predictions` records with model role/version metadata for scoring auditability.
 - Persistent `credit_scores` records with retrieval endpoints for credit decision auditability.
 - Alert retrieval, statistics, health checks, and direct `/predict` scoring.
 
@@ -82,6 +83,8 @@ The gateway also accepts `Authorization: Bearer <jwt>` tokens issued by the auth
 - `GET /predictions/{id}`
 - `GET /stats`
 - `POST /predict`
+
+When `MLFLOW_ENABLE_CHALLENGER_SHADOW=true`, the fraud service evaluates a challenger model in shadow mode, stores both champion and challenger predictions, and keeps the champion as the live decision source.
 
 ### Notification Service
 

@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     MLFLOW_TRACKING_URI: str = "http://mlflow:5000"
     MLFLOW_MODEL_NAME: str = "FraudDetectionModel"
     MLFLOW_MODEL_STAGE: str = "latest"
+    MLFLOW_ENABLE_CHALLENGER_SHADOW: bool = False
+    MLFLOW_CHALLENGER_MODEL_NAME: str | None = None
+    MLFLOW_CHALLENGER_MODEL_STAGE: str = "latest"
+    CHAMPION_CHALLENGER_DELTA_THRESHOLD: float = 0.15
     FRAUD_ALERTS_TOPIC: str = "fraud-alerts"
     KAFKA_CONSUMER_AUTO_OFFSET_RESET: str = "earliest"
     KAFKA_CONSUMER_RETRY_DELAY_SECONDS: float = 2.0

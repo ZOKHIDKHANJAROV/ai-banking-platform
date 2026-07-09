@@ -244,3 +244,75 @@ def test_model_loader_normalizes_predict_output(
     )
 
     assert probability == 1.0
+
+
+def test_model_loader_uses_custom_model_name_for_registry_lookup(
+    monkeypatch
+):
+    loaded_uris = []
+    captured = {}
+
+    def search_model_versions(filter_string):
+        captured["filter_string"] = filter_string
+        return [DummyVersion("9")]
+
+    def get_run(run_id):
+        return DummyRun(
+            experiment_id="1",
+            artifact_uri="mlflow-artifacts:/1/run-9/artifacts"
+        )
+
+    def load_model(model_uri):
+        loaded_uris.append(model_uri)
+        return DummyProbabilityModel()
+
+    fake_mlflow = types.SimpleNamespace(
+        tracking_uri=None,
+        set_tracking_uri=lambda uri: setattr(
+            fake_mlflow,
+            "tracking_uri",
+            uri
+        ),
+        MlflowClient=lambda tracking_uri=None: types.SimpleNamespace(
+            tracking_uri=tracking_uri,
+            search_model_versions=search_model_versions,
+            get_run=get_run
+        ),
+        pyfunc=types.SimpleNamespace(
+            load_model=load_model
+        )
+    )
+
+    model_loader_module = build_model_loader_module(
+        monkeypatch,
+        fake_mlflow
+    )
+    loader = model_loader_module.ModelLoader(
+        model_name="ChallengerFraudModel",
+        model_stage="latest",
+        role="challenger"
+    )
+
+    loader.load()
+
+    assert captured["filter_string"] == "name = 'ChallengerFraudModel'"
+    assert normalize_path(loader.source) == "/mlflow/artifacts/1/models/m-9/artifacts"
+
+
+def test_disabled_model_loader_does_not_load_model(
+    monkeypatch
+):
+    fake_mlflow = build_fake_mlflow(
+        versions=[DummyVersion("1")],
+        loaded_uris=[]
+    )
+    model_loader_module = build_model_loader_module(
+        monkeypatch,
+        fake_mlflow
+    )
+    loader = model_loader_module.ModelLoader(
+        enabled=False
+    )
+
+    assert loader.load() is None
+    assert loader.is_enabled is False
