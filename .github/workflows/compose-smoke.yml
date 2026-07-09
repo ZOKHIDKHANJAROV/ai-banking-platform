@@ -1,0 +1,39 @@
+name: Compose Smoke
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Start stack
+        run: docker compose up -d --build
+
+      - name: Run compose smoke
+        run: python scripts/smoke_compose.py
+
+      - name: Print compose status on failure
+        if: failure()
+        run: docker compose ps
+
+      - name: Print service logs on failure
+        if: failure()
+        run: docker compose logs --tail=200
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v

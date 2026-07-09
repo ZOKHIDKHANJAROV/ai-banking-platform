@@ -138,6 +138,12 @@ docker compose up --build
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3000` (`admin` / `admin`)
 
+5. Run the end-to-end compose smoke check:
+
+```bash
+py -3 scripts/smoke_compose.py
+```
+
 ## Training the Model
 
 Run the training script after MLflow is available:
@@ -165,3 +171,5 @@ GitHub Actions runs on every push, pull request, and manual dispatch. The workfl
 - verifies the migrated schema with a Postgres-backed smoke test
 - runs the full pytest suite
 - builds Docker images for `api-gateway`, `auth-service`, `fraud-service`, `notification-service`, and `scoring-service`
+
+There is also a separate manual `Compose Smoke` workflow that boots the full Docker Compose stack on GitHub Actions and runs `scripts/smoke_compose.py`.
