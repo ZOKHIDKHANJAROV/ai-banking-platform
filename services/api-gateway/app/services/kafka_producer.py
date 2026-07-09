@@ -29,7 +29,12 @@ async def send_event(
         "Published event topic=%s transaction_id=%s user_id=%s",
         topic,
         data.get("transaction_id"),
-        data.get("user_id")
+        data.get("user_id"),
+        extra={
+            "event": "gateway.kafka.published",
+            "transaction_id": data.get("transaction_id"),
+            "user_id": data.get("user_id")
+        }
     )
 
 

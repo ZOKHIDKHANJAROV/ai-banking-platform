@@ -5,10 +5,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi import HTTPException
+from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
 from app.core.config import settings
+from app.core.observability import configure_logging
 from app.db.database import AsyncSessionLocal
 from app.db.database import Base
 from app.db.database import engine
@@ -28,8 +30,7 @@ from app.services.outbox import enqueue_transaction_event
 from app.services.security import request_context_middleware
 from app.services.security import security_middleware
 
-
-logging.basicConfig(level=logging.INFO)
+configure_logging("api-gateway")
 logger = logging.getLogger(__name__)
 
 publisher_task: asyncio.Task | None = None
@@ -130,7 +131,10 @@ async def health():
 
 
 @app.post("/transactions", response_model=TransactionResponse)
-async def create_transaction(payload: TransactionCreate):
+async def create_transaction(
+    request: Request,
+    payload: TransactionCreate
+):
     async with AsyncSessionLocal() as session:
         transaction = Transaction(
             user_id=payload.user_id,
@@ -145,9 +149,20 @@ async def create_transaction(payload: TransactionCreate):
         await session.flush()
         await enqueue_transaction_event(
             session,
-            transaction
+            transaction,
+            request_id=request.state.request_id,
+            correlation_id=request.state.correlation_id
         )
         await session.commit()
+
+    logger.info(
+        "Accepted transaction for asynchronous fraud analysis",
+        extra={
+            "event": "gateway.transaction.accepted",
+            "transaction_id": transaction.id,
+            "user_id": transaction.user_id
+        }
+    )
 
     with contextlib.suppress(Exception):
         await flush_pending_events(batch_size=1)

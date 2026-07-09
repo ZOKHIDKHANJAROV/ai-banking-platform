@@ -114,6 +114,32 @@ def test_predict_endpoint_uses_extended_features(
     }
 
 
+def test_fraud_health_returns_request_context_headers(
+    tmp_path,
+    monkeypatch
+):
+    fraud_module = build_fraud_module(
+        tmp_path
+    )
+    prepare_fraud_app(
+        fraud_module,
+        monkeypatch
+    )
+
+    with TestClient(fraud_module.app) as client:
+        response = client.get(
+            "/health",
+            headers={
+                "X-Request-ID": "req-fraud-1",
+                "X-Correlation-ID": "corr-fraud-1"
+            }
+        )
+
+    assert response.status_code == 200
+    assert response.headers["X-Request-ID"] == "req-fraud-1"
+    assert response.headers["X-Correlation-ID"] == "corr-fraud-1"
+
+
 def test_prediction_endpoints_return_saved_predictions(
     tmp_path,
     monkeypatch

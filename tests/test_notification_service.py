@@ -39,13 +39,21 @@ def test_notification_health_endpoint(
     )
 
     with TestClient(notification_module.app) as client:
-        response = client.get("/health")
+        response = client.get(
+            "/health",
+            headers={
+                "X-Request-ID": "req-notification-1",
+                "X-Correlation-ID": "corr-notification-1"
+            }
+        )
 
     assert response.status_code == 200
     assert response.json() == {
         "service": "notification-service",
         "status": "running"
     }
+    assert response.headers["X-Request-ID"] == "req-notification-1"
+    assert response.headers["X-Correlation-ID"] == "corr-notification-1"
 
 
 def test_notification_metrics_endpoint(

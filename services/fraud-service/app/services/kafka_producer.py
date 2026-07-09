@@ -30,7 +30,13 @@ async def send_event(
         "Published event topic=%s alert_id=%s transaction_id=%s",
         topic,
         data.get("alert_id"),
-        data.get("transaction_id")
+        data.get("transaction_id"),
+        extra={
+            "event": "fraud.kafka.published",
+            "alert_id": data.get("alert_id"),
+            "transaction_id": data.get("transaction_id"),
+            "risk_level": data.get("risk_level")
+        }
     )
 
 

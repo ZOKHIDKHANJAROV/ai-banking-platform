@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 async def enqueue_transaction_event(
     session,
-    transaction: Transaction
+    transaction: Transaction,
+    request_id: str | None = None,
+    correlation_id: str | None = None
 ):
     event = OutboxEvent(
         transaction_id=transaction.id,
@@ -27,6 +29,8 @@ async def enqueue_transaction_event(
             "amount": transaction.amount,
             "country": transaction.country,
             "device_type": transaction.device_type,
+            "request_id": request_id,
+            "correlation_id": correlation_id,
             "created_at": (
                 transaction.created_at.isoformat()
                 if transaction.created_at is not None
@@ -98,7 +102,11 @@ async def dispatch_pending_events(
                 "Failed to dispatch outbox event id=%s transaction_id=%s: %s",
                 event.id,
                 event.transaction_id,
-                exc
+                exc,
+                extra={
+                    "event": "gateway.outbox.dispatch_failed",
+                    "transaction_id": event.transaction_id
+                }
             )
             outbox_events_dispatched_total.labels(
                 "FAILED"

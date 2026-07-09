@@ -12,6 +12,9 @@ from app.consumers.transaction_consumer import (
     start_consumer
 )
 from app.core.config import settings
+from app.core.observability import configure_logging
+from app.core.observability import event_log_context
+from app.core.observability import request_context_middleware
 from app.db.database import (
     AsyncSessionLocal,
     Base,
@@ -86,7 +89,7 @@ from app.services.training_log_service import (
     get_training_logs
 )
 
-logging.basicConfig(level=logging.INFO)
+configure_logging("fraud-service")
 logger = logging.getLogger(__name__)
 
 worker_task: asyncio.Task | None = None
@@ -170,177 +173,178 @@ async def fraud_worker():
 async def process_transaction(
     transaction: dict
 ):
-    user_id = transaction["user_id"]
-    amount = transaction["amount"]
-    country = transaction["country"]
-    device_type = transaction.get(
-        "device_type",
-        "unknown"
-    )
-    transaction_time = parse_transaction_timestamp(
-        transaction.get("created_at")
-    )
-    previous_amount = await get_last_transaction(
-        user_id=user_id
-    )
-    previous_country = await get_country(
-        user_id=user_id
-    )
-    previous_device_type = await get_device(
-        user_id=user_id
-    )
-    previous_transaction_time = await get_last_transaction_time(
-        user_id=user_id
-    )
-
-    tx_count = await increment_transaction_count(
-        user_id=user_id
-    )
-
-    score = calculate_fraud_score(
-        amount=amount,
-        country=country,
-        tx_count=tx_count,
-        previous_country=previous_country
-    )
-
-    country_risk, country_changed = get_country_features(
-        country=country,
-        previous_country=previous_country
-    )
-    device_changed = int(
-        previous_device_type is not None
-        and previous_device_type != device_type
-    )
-    baseline_amount = previous_amount or amount
-    amount_diff = abs(
-        amount - baseline_amount
-    )
-    hour_of_day = transaction_time.hour
-    day_of_week = transaction_time.weekday()
-    features = build_features(
-        amount=amount,
-        tx_count=tx_count,
-        country_risk=country_risk,
-        country_changed=country_changed,
-        previous_amount=baseline_amount,
-        amount_diff=amount_diff,
-        device_changed=device_changed,
-        hour_of_day=hour_of_day,
-        day_of_week=day_of_week
-    )
-
-    probability = predict_fraud_probability(
-        amount=amount,
-        tx_count=tx_count,
-        country_risk=country_risk,
-        country_changed=country_changed,
-        previous_amount=baseline_amount,
-        amount_diff=amount_diff,
-        device_changed=device_changed,
-        hour_of_day=hour_of_day,
-        day_of_week=day_of_week
-    )
-    await save_last_transaction(
-        user_id=user_id,
-        amount=amount
-    )
-    await save_country(
-        user_id=user_id,
-        country=country
-    )
-    await save_device(
-        user_id=user_id,
-        device_type=device_type
-    )
-    await save_last_transaction_time(
-        user_id=user_id,
-        occurred_at_iso=transaction_time.isoformat()
-    )
-
-    level = get_risk_level(
-        probability
-    )
-    transaction_status = map_risk_level_to_transaction_status(
-        level
-    )
-    model_prediction_probability.set(
-        probability
-    )
-
-    logger.info(
-        "Processed transaction_id=%s user_id=%s amount=%s country=%s previous_country=%s previous_device=%s tx_count=%s score=%.4f probability=%.4f risk_level=%s transaction_status=%s",
-        transaction["transaction_id"],
-        user_id,
-        amount,
-        country,
-        previous_country,
-        previous_device_type,
-        tx_count,
-        score,
-        probability,
-        level,
-        transaction_status
-    )
-
-    async with AsyncSessionLocal() as session:
-        status_updated = await update_transaction_status(
-            session=session,
-            transaction_id=transaction["transaction_id"],
-            status=transaction_status
+    with event_log_context(transaction):
+        user_id = transaction["user_id"]
+        amount = transaction["amount"]
+        country = transaction["country"]
+        device_type = transaction.get(
+            "device_type",
+            "unknown"
+        )
+        transaction_time = parse_transaction_timestamp(
+            transaction.get("created_at")
+        )
+        previous_amount = await get_last_transaction(
+            user_id=user_id
+        )
+        previous_country = await get_country(
+            user_id=user_id
+        )
+        previous_device_type = await get_device(
+            user_id=user_id
+        )
+        previous_transaction_time = await get_last_transaction_time(
+            user_id=user_id
         )
 
-        if not status_updated:
-            logger.warning(
-                "Transaction %s was not found for status update",
-                transaction["transaction_id"]
+        tx_count = await increment_transaction_count(
+            user_id=user_id
+        )
+
+        score = calculate_fraud_score(
+            amount=amount,
+            country=country,
+            tx_count=tx_count,
+            previous_country=previous_country
+        )
+
+        country_risk, country_changed = get_country_features(
+            country=country,
+            previous_country=previous_country
+        )
+        device_changed = int(
+            previous_device_type is not None
+            and previous_device_type != device_type
+        )
+        baseline_amount = previous_amount or amount
+        amount_diff = abs(
+            amount - baseline_amount
+        )
+        hour_of_day = transaction_time.hour
+        day_of_week = transaction_time.weekday()
+        features = build_features(
+            amount=amount,
+            tx_count=tx_count,
+            country_risk=country_risk,
+            country_changed=country_changed,
+            previous_amount=baseline_amount,
+            amount_diff=amount_diff,
+            device_changed=device_changed,
+            hour_of_day=hour_of_day,
+            day_of_week=day_of_week
+        )
+
+        probability = predict_fraud_probability(
+            amount=amount,
+            tx_count=tx_count,
+            country_risk=country_risk,
+            country_changed=country_changed,
+            previous_amount=baseline_amount,
+            amount_diff=amount_diff,
+            device_changed=device_changed,
+            hour_of_day=hour_of_day,
+            day_of_week=day_of_week
+        )
+        await save_last_transaction(
+            user_id=user_id,
+            amount=amount
+        )
+        await save_country(
+            user_id=user_id,
+            country=country
+        )
+        await save_device(
+            user_id=user_id,
+            device_type=device_type
+        )
+        await save_last_transaction_time(
+            user_id=user_id,
+            occurred_at_iso=transaction_time.isoformat()
+        )
+
+        level = get_risk_level(
+            probability
+        )
+        transaction_status = map_risk_level_to_transaction_status(
+            level
+        )
+        model_prediction_probability.set(
+            probability
+        )
+
+        logger.info(
+            "Processed transaction for fraud evaluation",
+            extra={
+                "event": "fraud.transaction.processed",
+                "transaction_id": transaction["transaction_id"],
+                "user_id": user_id,
+                "risk_level": level
+            }
+        )
+
+        async with AsyncSessionLocal() as session:
+            status_updated = await update_transaction_status(
+                session=session,
+                transaction_id=transaction["transaction_id"],
+                status=transaction_status
             )
 
-        alert = await save_alert(
-            session=session,
-            transaction_id=transaction["transaction_id"],
-            score=score,
-            probability=probability,
-            level=level
-        )
-        prediction = await save_model_prediction(
-            session=session,
-            transaction_id=transaction["transaction_id"],
-            fraud_probability=probability,
-            risk_level=level,
-            model_source=model_loader.source,
-            features=features.iloc[0].to_dict()
-        )
-        await session.commit()
+            if not status_updated:
+                logger.warning(
+                    "Transaction was not found for status update",
+                    extra={
+                        "event": "fraud.transaction.status_missing",
+                        "transaction_id": transaction["transaction_id"]
+                    }
+                )
 
-    await send_fraud_alert_event(
-        build_fraud_alert_event(
-            alert=alert,
-            transaction_status=transaction_status
-        )
-    )
-    transactions_processed_total.labels(
-        level,
-        transaction_status
-    ).inc()
-    alerts_published_total.labels(
-        level
-    ).inc()
+            alert = await save_alert(
+                session=session,
+                transaction_id=transaction["transaction_id"],
+                score=score,
+                probability=probability,
+                level=level
+            )
+            prediction = await save_model_prediction(
+                session=session,
+                transaction_id=transaction["transaction_id"],
+                fraud_probability=probability,
+                risk_level=level,
+                model_source=model_loader.source,
+                features=features.iloc[0].to_dict()
+            )
+            await session.commit()
 
-    return {
-        "transaction_id": transaction["transaction_id"],
-        "alert_id": alert.id,
-        "fraud_score": score,
-        "fraud_probability": probability,
-        "risk_level": level,
-        "transaction_status": transaction_status,
-        "tx_count": tx_count,
-        "previous_country": previous_country,
-        "previous_amount": previous_amount,
-        "previous_device_type": previous_device_type,
-        "previous_transaction_time": previous_transaction_time,
-        "prediction_id": prediction.id
-    }
+        await send_fraud_alert_event(
+            build_fraud_alert_event(
+                alert=alert,
+                transaction_status=transaction_status,
+                request_id=transaction.get("request_id"),
+                correlation_id=transaction.get("correlation_id")
+            )
+        )
+        transactions_processed_total.labels(
+            level,
+            transaction_status
+        ).inc()
+        alerts_published_total.labels(
+            level
+        ).inc()
+
+        return {
+            "transaction_id": transaction["transaction_id"],
+            "alert_id": alert.id,
+            "fraud_score": score,
+            "fraud_probability": probability,
+            "risk_level": level,
+            "transaction_status": transaction_status,
+            "tx_count": tx_count,
+            "previous_country": previous_country,
+            "previous_amount": previous_amount,
+            "previous_device_type": previous_device_type,
+            "previous_transaction_time": previous_transaction_time,
+            "prediction_id": prediction.id
+        }
 
 
 @asynccontextmanager
@@ -376,6 +380,7 @@ app = FastAPI(
     title="Fraud Detection Service",
     lifespan=lifespan
 )
+app.middleware("http")(request_context_middleware)
 app.middleware("http")(metrics_middleware)
 
 

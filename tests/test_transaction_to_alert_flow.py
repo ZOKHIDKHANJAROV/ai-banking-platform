@@ -77,7 +77,11 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
     with TestClient(gateway_module.app) as client:
         response = client.post(
             "/transactions",
-            headers=auth_headers(),
+            headers={
+                **auth_headers(),
+                "X-Request-ID": "req-flow-1",
+                "X-Correlation-ID": "corr-flow-1"
+            },
             json={
                 "user_id": 501,
                 "amount": 12500.0,
@@ -91,6 +95,8 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
     assert response.json()["status"] == "QUEUED"
     assert published_events
     assert published_events[0]["topic"] == "transactions"
+    assert published_events[0]["payload"]["request_id"] == "req-flow-1"
+    assert published_events[0]["payload"]["correlation_id"] == "corr-flow-1"
 
     database_path = tmp_path / "gateway-flow.db"
 
@@ -258,5 +264,7 @@ def test_transaction_flows_from_gateway_event_to_fraud_alert(
     assert published_alert_events[0]["transaction_id"] == response.json()["id"]
     assert published_alert_events[0]["risk_level"] == "HIGH"
     assert published_alert_events[0]["transaction_status"] == "BLOCKED"
+    assert published_alert_events[0]["request_id"] == "req-flow-1"
+    assert published_alert_events[0]["correlation_id"] == "corr-flow-1"
     assert stored_transaction.status_code == 200
     assert stored_transaction.json()["status"] == "BLOCKED"

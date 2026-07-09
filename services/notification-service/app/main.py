@@ -8,6 +8,9 @@ from fastapi import HTTPException
 
 from app.consumers.fraud_alert_consumer import start_consumer
 from app.core.config import settings
+from app.core.observability import configure_logging
+from app.core.observability import event_log_context
+from app.core.observability import request_context_middleware
 from app.db.database import AsyncSessionLocal
 from app.db.database import Base
 from app.db.database import engine
@@ -21,7 +24,7 @@ from app.services.notification_service import get_notifications
 from app.services.notification_service import save_notification
 
 
-logging.basicConfig(level=logging.INFO)
+configure_logging("notification-service")
 logger = logging.getLogger(__name__)
 
 worker_task: asyncio.Task | None = None
@@ -30,21 +33,25 @@ worker_task: asyncio.Task | None = None
 async def process_alert_event(
     alert_event: dict
 ):
-    async with AsyncSessionLocal() as session:
-        notification = await save_notification(
-            session=session,
-            alert_event=alert_event
+    with event_log_context(alert_event):
+        async with AsyncSessionLocal() as session:
+            notification = await save_notification(
+                session=session,
+                alert_event=alert_event
+            )
+
+        logger.info(
+            "Notification stored for fraud alert",
+            extra={
+                "event": "notification.persisted",
+                "alert_id": notification.alert_id,
+                "transaction_id": notification.transaction_id,
+                "channel": notification.channel,
+                "risk_level": alert_event.get("risk_level")
+            }
         )
 
-    logger.info(
-        "Notification stored id=%s alert_id=%s transaction_id=%s channel=%s",
-        notification.id,
-        notification.alert_id,
-        notification.transaction_id,
-        notification.channel
-    )
-
-    return notification
+        return notification
 
 
 async def notification_worker():
@@ -96,6 +103,7 @@ app = FastAPI(
     title="Notification Service",
     lifespan=lifespan
 )
+app.middleware("http")(request_context_middleware)
 app.middleware("http")(metrics_middleware)
 
 

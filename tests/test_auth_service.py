@@ -25,13 +25,21 @@ def test_auth_service_health_endpoint():
     auth_module = build_auth_module()
 
     with TestClient(auth_module.app) as client:
-        response = client.get("/health")
+        response = client.get(
+            "/health",
+            headers={
+                "X-Request-ID": "req-auth-1",
+                "X-Correlation-ID": "corr-auth-1"
+            }
+        )
 
     assert response.status_code == 200
     assert response.json() == {
         "service": "auth-service",
         "status": "running"
     }
+    assert response.headers["X-Request-ID"] == "req-auth-1"
+    assert response.headers["X-Correlation-ID"] == "corr-auth-1"
 
 
 def test_auth_service_issues_jwt():

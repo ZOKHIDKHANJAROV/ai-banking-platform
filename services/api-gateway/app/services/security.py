@@ -5,6 +5,8 @@ import jwt
 from fastapi import Request
 from starlette.responses import JSONResponse
 
+from app.core.observability import reset_log_context
+from app.core.observability import set_log_context
 from app.services.metrics import api_gateway_rate_limited_requests_total
 from app.services.metrics import api_gateway_unauthorized_requests_total
 
@@ -61,8 +63,16 @@ async def request_context_middleware(
 
     request.state.request_id = request_id
     request.state.correlation_id = correlation_id
+    tokens = set_log_context(
+        request_id=request_id,
+        correlation_id=correlation_id
+    )
 
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    finally:
+        reset_log_context(tokens)
+
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Correlation-ID"] = correlation_id
 
@@ -98,6 +108,14 @@ async def security_middleware(
             )
         except jwt.InvalidTokenError:
             api_gateway_unauthorized_requests_total.inc()
+            logger.warning(
+                "Rejected request with invalid bearer token",
+                extra={
+                    "event": "gateway.auth.invalid_bearer",
+                    "path": request.url.path,
+                    "method": request.method
+                }
+            )
             return JSONResponse(
                 status_code=401,
                 content={
@@ -108,6 +126,14 @@ async def security_middleware(
         principal = f"api-key:{api_key}"
     else:
         api_gateway_unauthorized_requests_total.inc()
+        logger.warning(
+            "Rejected request with missing credentials",
+            extra={
+                "event": "gateway.auth.missing_credentials",
+                "path": request.url.path,
+                "method": request.method
+            }
+        )
         return JSONResponse(
             status_code=401,
             content={
@@ -127,6 +153,15 @@ async def security_middleware(
 
     if not allowed:
         api_gateway_rate_limited_requests_total.inc()
+        logger.warning(
+            "Rejected request due to rate limiting",
+            extra={
+                "event": "gateway.rate_limit.exceeded",
+                "path": request.url.path,
+                "method": request.method,
+                "principal": principal
+            }
+        )
         return JSONResponse(
             status_code=429,
             content={

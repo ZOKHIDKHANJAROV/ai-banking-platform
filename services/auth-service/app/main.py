@@ -1,6 +1,10 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi import HTTPException
 
+from app.core.observability import configure_logging
+from app.core.observability import request_context_middleware
 from app.schemas.auth import TokenRequest
 from app.schemas.auth import TokenResponse
 from app.schemas.health import HealthResponse
@@ -12,9 +16,13 @@ from app.services.metrics import metrics_response
 from app.services.metrics import tokens_issued_total
 
 
+configure_logging("auth-service")
+logger = logging.getLogger(__name__)
+
 app = FastAPI(
     title="Auth Service"
 )
+app.middleware("http")(request_context_middleware)
 app.middleware("http")(metrics_middleware)
 
 
@@ -40,6 +48,13 @@ async def create_token(
         payload.password
     ):
         auth_failures_total.inc()
+        logger.warning(
+            "Authentication failed",
+            extra={
+                "event": "auth.token.failed",
+                "principal": payload.username
+            }
+        )
         raise HTTPException(
             status_code=401,
             detail="Invalid credentials"
@@ -49,6 +64,13 @@ async def create_token(
         payload.username
     )
     tokens_issued_total.inc()
+    logger.info(
+        "Issued JWT access token",
+        extra={
+            "event": "auth.token.issued",
+            "principal": payload.username
+        }
+    )
 
     return TokenResponse(
         access_token=token,

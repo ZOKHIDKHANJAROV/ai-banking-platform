@@ -381,7 +381,11 @@ def test_create_transaction_marks_record_as_queued(
     with TestClient(gateway_module.app) as client:
         response = client.post(
             "/transactions",
-            headers=auth_headers(),
+            headers={
+                **auth_headers(),
+                "X-Request-ID": "req-gateway-1",
+                "X-Correlation-ID": "corr-gateway-1"
+            },
             json={
                 "user_id": 42,
                 "amount": 150.25,
@@ -399,6 +403,8 @@ def test_create_transaction_marks_record_as_queued(
     assert published_events
     assert published_events[0]["topic"] == "transactions"
     assert published_events[0]["payload"]["transaction_id"] == body["id"]
+    assert published_events[0]["payload"]["request_id"] == "req-gateway-1"
+    assert published_events[0]["payload"]["correlation_id"] == "corr-gateway-1"
 
     with TestClient(gateway_module.app) as client:
         outbox_response = client.get(
