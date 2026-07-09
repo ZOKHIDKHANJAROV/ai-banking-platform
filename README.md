@@ -7,6 +7,7 @@ Microservice-based fraud detection platform for banking transactions.
 - `api-gateway`: accepts transactions, persists them, and publishes Kafka events.
 - `fraud-service`: consumes Kafka events, calculates rule-based risk, enriches features from Redis, runs an ML model, and stores fraud alerts.
 - `notification-service`: consumes fraud alerts, builds notification messages, and stores delivery records.
+- `scoring-service`: generates credit scores from a registry-backed ML model and stores scoring audit records.
 - `auth-service`: issues JWT access tokens for protected gateway access.
 - `mlflow`: tracks experiments and serves the model registry.
 - `prometheus`, `grafana`: collect and visualize platform metrics.
@@ -26,6 +27,7 @@ Microservice-based fraud detection platform for banking transactions.
 - MLflow Registry-based model loading with automatic latest-version resolution.
 - Fraud feature enrichment with previous amount, device change, and transaction time signals.
 - Persistent `model_predictions` records with retrieval endpoints for scoring auditability.
+- Persistent `credit_scores` records with retrieval endpoints for credit decision auditability.
 - Alert retrieval, statistics, health checks, and direct `/predict` scoring.
 
 ## Project Structure
@@ -39,6 +41,7 @@ ai-banking-platform/
 |   |-- api-gateway/
 |   |-- auth-service/
 |   |-- fraud-service/
+|   |-- scoring-service/
 |   `-- notification-service/
 `-- tests/
 ```
@@ -88,6 +91,15 @@ The gateway also accepts `Authorization: Bearer <jwt>` tokens issued by the auth
 - `GET /notifications/{id}`
 - `GET /metrics`
 
+### Scoring Service
+
+- `GET /`
+- `GET /health`
+- `POST /score`
+- `GET /scores`
+- `GET /scores/{id}`
+- `GET /metrics`
+
 ### Monitoring
 
 - Prometheus scrapes:
@@ -118,6 +130,7 @@ docker compose up --build
 - Fraud Service: `http://localhost:8001`
 - Notification Service: `http://localhost:8002`
 - Auth Service: `http://localhost:8003`
+- Scoring Service: `http://localhost:8004`
 - MLflow: `http://localhost:5000`
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3000` (`admin` / `admin`)

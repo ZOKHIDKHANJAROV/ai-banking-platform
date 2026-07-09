@@ -136,6 +136,39 @@
       ],
       "title": "Outbox Pending Events",
       "type": "timeseries"
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "expr": "sum by (score_band) (scoring_service_credit_scores_generated_total)",
+          "legendFormat": "{{score_band}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Credit Scoring Bands",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 39,

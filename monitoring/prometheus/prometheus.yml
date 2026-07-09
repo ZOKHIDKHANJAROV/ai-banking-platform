@@ -17,3 +17,8 @@ scrape_configs:
     static_configs:
       - targets: ["notification-service:8000"]
     metrics_path: /metrics
+
+  - job_name: "scoring-service"
+    static_configs:
+      - targets: ["scoring-service:8000"]
+    metrics_path: /metrics

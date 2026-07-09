@@ -112,6 +112,26 @@ services:
       timeout: 5s
       retries: 5
 
+  scoring-service:
+    build:
+      context: ./services/scoring-service
+    container_name: scoring_service
+    restart: always
+    env_file:
+      - ./services/scoring-service/.env
+    volumes:
+      - mlflow_data:/mlflow:ro
+    depends_on:
+      - postgres
+      - mlflow
+    ports:
+      - "8004:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/', timeout=3)"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+
   notification-service:
     build:
       context: ./services/notification-service

@@ -99,6 +99,19 @@ Table(
 )
 
 Table(
+    "credit_scores",
+    target_metadata,
+    Column("id", Integer, primary_key=True),
+    Column("user_id", Integer, nullable=False, index=True),
+    Column("credit_score", Float, nullable=False),
+    Column("repayment_probability", Float, nullable=False),
+    Column("score_band", String, nullable=False),
+    Column("model_source", String, nullable=False),
+    Column("features_json", Text, nullable=False),
+    Column("created_at", DateTime(timezone=True), server_default=func.now())
+)
+
+Table(
     "outbox_events",
     target_metadata,
     Column("id", Integer, primary_key=True),

@@ -40,6 +40,7 @@ jobs:
           python -m pip install -r services/auth-service/requirements.txt
           python -m pip install -r services/fraud-service/requirements.txt
           python -m pip install -r services/notification-service/requirements.txt
+          python -m pip install -r services/scoring-service/requirements.txt
           python -m pip install pytest pytest-asyncio aiosqlite
 
       - name: Compile sources
