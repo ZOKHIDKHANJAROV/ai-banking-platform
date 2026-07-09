@@ -17,6 +17,7 @@ FRAUD_SERVICE_URL = "http://127.0.0.1:8001"
 NOTIFICATION_SERVICE_URL = "http://127.0.0.1:8002"
 AUTH_SERVICE_URL = "http://127.0.0.1:8003"
 SCORING_SERVICE_URL = "http://127.0.0.1:8004"
+ASSISTANT_SERVICE_URL = "http://127.0.0.1:8005"
 MAILHOG_URL = "http://127.0.0.1:8025"
 MLFLOW_URL = "http://127.0.0.1:5000"
 PROMETHEUS_URL = "http://127.0.0.1:9090"
@@ -216,6 +217,10 @@ def main() -> int:
         f"{SCORING_SERVICE_URL}/health",
         predicate=lambda payload: payload.get("status") == "running",
     )
+    wait_for_json(
+        f"{ASSISTANT_SERVICE_URL}/health",
+        predicate=lambda payload: payload.get("status") == "running",
+    )
 
     log("checking supporting endpoints")
     http_request("GET", f"{MLFLOW_URL}/")
@@ -287,6 +292,34 @@ def main() -> int:
     if not matching_notifications:
         raise RuntimeError(
             "notification-service did not persist a notification for the smoke transaction"
+        )
+
+    log("indexing assistant knowledge and querying assistant-service")
+    reindex_response = post_json(
+        f"{ASSISTANT_SERVICE_URL}/knowledge/reindex",
+        {
+            "limit": 100
+        },
+    )
+    if reindex_response["indexed_count"] < 1:
+        raise RuntimeError(
+            "assistant-service did not index any fraud history"
+        )
+
+    assistant_response = post_json(
+        f"{ASSISTANT_SERVICE_URL}/assistant/query",
+        {
+            "question": f"What happened with transaction {transaction_id}?",
+            "top_k": 3
+        },
+    )
+    if not assistant_response.get("answer"):
+        raise RuntimeError(
+            "assistant-service did not return an answer"
+        )
+    if not assistant_response.get("sources"):
+        raise RuntimeError(
+            "assistant-service did not return retrieval sources"
         )
 
     log("checking scoring-service write path")

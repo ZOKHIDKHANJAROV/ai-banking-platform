@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+
+sqlalchemy
+asyncpg
+psycopg2-binary
+
+qdrant-client
+openai
+
+pydantic
+pydantic-settings
+prometheus-client

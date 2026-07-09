@@ -7,6 +7,7 @@ Microservice-based fraud detection platform for banking transactions.
 - `api-gateway`: accepts transactions, persists them, and publishes Kafka events.
 - `fraud-service`: consumes Kafka events, calculates rule-based risk, enriches features from Redis, runs an ML model, and stores fraud alerts.
 - `notification-service`: consumes fraud alerts, builds notification messages, and stores delivery records.
+- `assistant-service`: indexes fraud history into Qdrant and answers investigation questions with retrieval-backed context.
 - `scoring-service`: generates credit scores from a registry-backed ML model and stores scoring audit records.
 - `auth-service`: issues JWT access tokens for protected gateway access.
 - `mlflow`: tracks experiments and serves the model registry.
@@ -26,6 +27,7 @@ Microservice-based fraud detection platform for banking transactions.
 - JWT token issuance via auth-service and bearer-token access to the API gateway.
 - MLflow Registry-based model loading with automatic latest-version resolution.
 - Optional champion-challenger shadow scoring for fraud models with audit persistence and divergence metrics.
+- Qdrant-backed fraud memory with an investigation assistant for retrieval and OpenAI-powered answers.
 - Fraud feature enrichment with previous amount, device change, and transaction time signals.
 - Persistent `model_predictions` records with model role/version metadata for scoring auditability.
 - Persistent `credit_scores` records with retrieval endpoints for credit decision auditability.
@@ -40,6 +42,7 @@ ai-banking-platform/
 |   `-- fraud-models/
 |-- services/
 |   |-- api-gateway/
+|   |-- assistant-service/
 |   |-- auth-service/
 |   |-- fraud-service/
 |   |-- scoring-service/
@@ -94,6 +97,15 @@ When `MLFLOW_ENABLE_CHALLENGER_SHADOW=true`, the fraud service evaluates a chall
 - `GET /notifications/{id}`
 - `GET /metrics`
 
+### Assistant Service
+
+- `GET /`
+- `GET /health`
+- `POST /knowledge/reindex`
+- `GET /knowledge/stats`
+- `POST /assistant/query`
+- `GET /metrics`
+
 ### Scoring Service
 
 - `GET /`
@@ -134,6 +146,7 @@ docker compose up --build
 - Notification Service: `http://localhost:8002`
 - Auth Service: `http://localhost:8003`
 - Scoring Service: `http://localhost:8004`
+- Assistant Service: `http://localhost:8005`
 - MLflow: `http://localhost:5000`
 - Prometheus: `http://localhost:9090`
 - Grafana: `http://localhost:3000` (`admin` / `admin`)
@@ -171,5 +184,6 @@ GitHub Actions runs on every push, pull request, and manual dispatch. The workfl
 - verifies the migrated schema with a Postgres-backed smoke test
 - runs the full pytest suite
 - builds Docker images for `api-gateway`, `auth-service`, `fraud-service`, `notification-service`, and `scoring-service`
+- builds Docker images for `api-gateway`, `auth-service`, `fraud-service`, `notification-service`, `assistant-service`, and `scoring-service`
 
 There is also a separate manual `Compose Smoke` workflow that boots the full Docker Compose stack on GitHub Actions and runs `scripts/smoke_compose.py`.
