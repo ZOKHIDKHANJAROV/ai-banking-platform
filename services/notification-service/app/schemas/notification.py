@@ -16,4 +16,8 @@ class NotificationResponse(BaseModel):
     recipient: str
     message: str
     status: str
+    attempts: int
+    last_error: str | None = None
+    provider_message_id: str | None = None
+    delivered_at: datetime | None = None
     created_at: datetime

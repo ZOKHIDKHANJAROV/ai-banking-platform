@@ -6,6 +6,8 @@ asyncpg
 psycopg2-binary
 
 aiokafka
+aiosmtplib
+httpx
 
 pydantic
 pydantic-settings

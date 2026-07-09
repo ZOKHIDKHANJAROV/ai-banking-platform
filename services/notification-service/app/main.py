@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi import HTTPException
+from fastapi import WebSocket
 
 from app.consumers.fraud_alert_consumer import start_consumer
 from app.core.config import settings
@@ -16,42 +17,68 @@ from app.db.database import Base
 from app.db.database import engine
 from app.schemas.health import HealthResponse
 from app.schemas.notification import NotificationResponse
+from app.schemas.notification_stats import NotificationStatsResponse
+from app.services.delivery_dispatcher import DeliveryDispatcher
 from app.services.metrics import kafka_worker_retries_total
 from app.services.metrics import metrics_middleware
 from app.services.metrics import metrics_response
+from app.services.notification_service import build_notification_deliveries
+from app.services.notification_service import create_notification
 from app.services.notification_service import get_notification_by_id
 from app.services.notification_service import get_notifications
-from app.services.notification_service import save_notification
+from app.services.notification_service import get_notification_stats
+from app.services.notification_service import retry_notification
+from app.services.notification_service import deliver_notification
+from app.services.websocket_hub import WebSocketHub
 
 
 configure_logging("notification-service")
 logger = logging.getLogger(__name__)
 
 worker_task: asyncio.Task | None = None
+websocket_hub = WebSocketHub()
+dispatcher = DeliveryDispatcher(
+    websocket_hub=websocket_hub
+)
 
 
 async def process_alert_event(
     alert_event: dict
 ):
     with event_log_context(alert_event):
-        async with AsyncSessionLocal() as session:
-            notification = await save_notification(
-                session=session,
-                alert_event=alert_event
-            )
-
-        logger.info(
-            "Notification stored for fraud alert",
-            extra={
-                "event": "notification.persisted",
-                "alert_id": notification.alert_id,
-                "transaction_id": notification.transaction_id,
-                "channel": notification.channel,
-                "risk_level": alert_event.get("risk_level")
-            }
+        saved_notifications = []
+        deliveries = build_notification_deliveries(
+            alert_event
         )
 
-        return notification
+        async with AsyncSessionLocal() as session:
+            for delivery in deliveries:
+                notification = await create_notification(
+                    session,
+                    alert_event=alert_event,
+                    channel=delivery["channel"],
+                    recipient=delivery["recipient"],
+                    message=delivery["message"]
+                )
+                notification = await deliver_notification(
+                    session,
+                    notification=notification,
+                    dispatcher=dispatcher
+                )
+                saved_notifications.append(notification)
+
+                logger.info(
+                    "Notification delivery processed",
+                    extra={
+                        "event": "notification.delivery.processed",
+                        "alert_id": notification.alert_id,
+                        "transaction_id": notification.transaction_id,
+                        "channel": notification.channel,
+                        "risk_level": alert_event.get("risk_level")
+                    }
+                )
+
+        return saved_notifications
 
 
 async def notification_worker():
@@ -132,6 +159,17 @@ async def read_notifications():
 
 
 @app.get(
+    "/notifications/stats",
+    response_model=NotificationStatsResponse
+)
+async def read_notification_stats():
+    async with AsyncSessionLocal() as session:
+        return await get_notification_stats(
+            session
+        )
+
+
+@app.get(
     "/notifications/{notification_id}",
     response_model=NotificationResponse
 )
@@ -151,6 +189,57 @@ async def read_notification(
             )
 
         return notification
+
+
+@app.post(
+    "/notifications/{notification_id}/retry",
+    response_model=NotificationResponse
+)
+async def retry_failed_notification(
+    notification_id: int
+):
+    async with AsyncSessionLocal() as session:
+        notification = await retry_notification(
+            session,
+            notification_id=notification_id,
+            dispatcher=dispatcher
+        )
+
+        if notification is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Notification not found"
+            )
+
+        return notification
+
+
+@app.websocket("/ws/notifications")
+async def notifications_websocket(
+    websocket: WebSocket
+):
+    await websocket_hub.serve(
+        websocket
+    )
+
+
+@app.post("/mock/sms")
+async def mock_sms_provider():
+    return {
+        "message_id": "mock-sms-delivery"
+    }
+
+
+@app.post("/mock/telegram/bot{token}/sendMessage")
+async def mock_telegram_provider(
+    token: str
+):
+    return {
+        "ok": True,
+        "result": {
+            "message_id": f"mock-telegram-{token}"
+        }
+    }
 
 
 @app.get("/metrics")

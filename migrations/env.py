@@ -135,6 +135,10 @@ Table(
     Column("recipient", String, nullable=False),
     Column("message", String, nullable=False),
     Column("status", String, nullable=False),
+    Column("attempts", Integer, nullable=False),
+    Column("last_error", Text, nullable=True),
+    Column("provider_message_id", String, nullable=True),
+    Column("delivered_at", DateTime(timezone=True), nullable=True),
     Column("created_at", DateTime(timezone=True), server_default=func.now())
 )
 

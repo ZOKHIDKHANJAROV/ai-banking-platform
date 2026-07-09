@@ -55,6 +55,13 @@ services:
     ports:
       - "6333:6333"
 
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: banking_mailhog
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+
   api-gateway:
     build:
       context: ./services/api-gateway
@@ -142,6 +149,7 @@ services:
     depends_on:
       - postgres
       - kafka
+      - mailhog
     ports:
       - "8002:8000"
     healthcheck:
